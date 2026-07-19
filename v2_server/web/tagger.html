@@ -35,7 +35,7 @@
   #main{flex:1;display:flex;flex-direction:column;min-width:0}
   #stage{flex:1;position:relative;overflow:hidden;background:#0a0a0b}
   #photo{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;user-select:none;-webkit-user-drag:none}
-  #photo.zoomed{position:absolute;inset:auto;max-width:none;max-height:none;left:0;top:0;margin:0}
+  #photo.zoomed{position:absolute;inset:auto;max-width:none;max-height:none;left:0;top:0;margin:0;cursor:grab}
   #photo.hidden{display:none}
   #badges{position:absolute;left:14px;top:12px;display:flex;gap:8px;pointer-events:none}
   .chip{padding:3px 12px;border-radius:99px;font-weight:600;font-size:15px;color:#000;box-shadow:0 1px 6px rgba(0,0,0,.5)}
@@ -150,7 +150,7 @@
     <b>A / S / D</b><span>状态:直出 / 大修 / 废片</span> <b>← K</b><span>上一张</span>
     <b>Z / X</b><span>质量:绝美 / 普通</span>            <b>U ⌘Z</b><span>撤销(⇧ 重做)</span>
     <b>⌫</b><span>清空本张全部 tag</span>               <b>N</b><span>下一张未打状态的</span>
-    <b>F</b><span>「打完状态自动下一张」开关</span>       <b>.</b><span>100% ↔ 适应(方向键平移)</span>
+    <b>F</b><span>「打完状态自动下一张」开关</span>       <b>.</b><span>100% ↔ 适应;触控板捏合变倍,滚动/拖拽/方向键平移</span>
     <b>Tab</b><span>缩略图条</span>                      <b>[ / ]</b><span>上一天 / 下一天</span>
     <b>O</b><span>换目录</span>                          <b>H / ?</b><span>本帮助</span>
   </div>
@@ -183,7 +183,7 @@ const KEYCAP = {KeyQ:"Q",KeyW:"W",KeyE:"E",KeyA:"A",KeyS:"S",KeyD:"D",KeyZ:"Z",K
 const state = {
   root: null, days: [], dayIdx: -1,
   photos: [], tags: {}, cur: -1,
-  zoom: false, panX: 0, panY: 0,
+  zoom: false, scale: 1, panX: 0, panY: 0,
   auto: localStorage.getItem("pt2:auto") !== "0",
   undoStack: [], redoStack: [],
   stripOn: false, stripDay: null,
@@ -450,34 +450,76 @@ function go(i, opts) {
   renderHudInfo(); renderBadges(); renderHudKeys(); highlightStrip();
   localStorage.setItem("pt2:pos:" + d.path, i);
 }
-photoEl.addEventListener("load", () => { $("spin").style.display = "none"; if (state.zoom) layoutZoom(true); });
+photoEl.addEventListener("load", () => { $("spin").style.display = "none"; if (state.zoom) { clampPan(); applyZoom(); } });
 photoEl.addEventListener("error", () => { $("spin").style.display = "none"; if (photoEl.src) toast("⚠️ 图片加载失败"); });
+/* ---- 缩放:.或点击=100%↔适应;触控板捏合连续变倍(锚定指针);缩放中双指滚动/拖拽/方向键平移 ---- */
+const ZMAX = 4;
 function stageSize() { const r = $("stage").getBoundingClientRect(); return [r.width, r.height]; }
-function clampPan() {
-  const [sw, sh] = stageSize(), nw = photoEl.naturalWidth, nh = photoEl.naturalHeight;
-  state.panX = nw <= sw ? (sw - nw) / 2 : Math.min(0, Math.max(sw - nw, state.panX));
-  state.panY = nh <= sh ? (sh - nh) / 2 : Math.min(0, Math.max(sh - nh, state.panY));
-  photoEl.style.transform = `translate(${state.panX}px, ${state.panY}px)`;
+function fitScale() { const [sw, sh] = stageSize(); return Math.min(sw / photoEl.naturalWidth, sh / photoEl.naturalHeight, 1); }
+function applyZoom() {
+  photoEl.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+  $("zoom-ind").textContent = Math.round(state.scale * 100) + "%";
 }
-function layoutZoom(center) {
-  const [sw, sh] = stageSize();
-  if (center) { state.panX = (sw - photoEl.naturalWidth) / 2; state.panY = (sh - photoEl.naturalHeight) / 2; }
-  photoEl.classList.add("zoomed");
+function clampPan() {
+  const [sw, sh] = stageSize(), w = photoEl.naturalWidth * state.scale, h = photoEl.naturalHeight * state.scale;
+  state.panX = w <= sw ? (sw - w) / 2 : Math.min(0, Math.max(sw - w, state.panX));
+  state.panY = h <= sh ? (sh - h) / 2 : Math.min(0, Math.max(sh - h, state.panY));
+}
+function setZoom(newS, cx, cy) {
+  if (!curPhoto() || !photoEl.naturalWidth) return;
+  const fs = fitScale();
+  newS = Math.min(ZMAX, Math.max(fs, newS));
+  const r = $("stage").getBoundingClientRect();
+  const px = cx == null ? r.width / 2 : cx - r.left;
+  const py = cy == null ? r.height / 2 : cy - r.top;
+  if (!state.zoom) {                 // 从适应模式进入:等效缩放为 fs,居中摆放
+    state.scale = fs;
+    state.panX = (r.width - photoEl.naturalWidth * fs) / 2;
+    state.panY = (r.height - photoEl.naturalHeight * fs) / 2;
+  }
+  const ix = (px - state.panX) / state.scale, iy = (py - state.panY) / state.scale;
+  if (newS <= fs * 1.001) { exitZoom(); return; }
+  state.zoom = true;
+  state.scale = newS;
+  state.panX = px - ix * newS;
+  state.panY = py - iy * newS;
   clampPan();
+  photoEl.classList.add("zoomed");
+  photoEl.style.transformOrigin = "0 0";
+  applyZoom();
   $("zoom-ind").style.display = "block";
 }
 function exitZoom() {
-  state.zoom = false;
+  state.zoom = false; state.scale = 1;
   photoEl.classList.remove("zoomed");
   photoEl.style.transform = "";
   $("zoom-ind").style.display = "none";
 }
-function toggleZoom() {
+function toggleZoom(cx, cy) { state.zoom ? exitZoom() : setZoom(1, cx, cy); }
+function pan(dx, dy) { if (!state.zoom) return; state.panX += dx; state.panY += dy; clampPan(); applyZoom(); }
+const stageEl = $("stage");
+stageEl.addEventListener("wheel", e => {
   if (!curPhoto()) return;
-  if (state.zoom) exitZoom();
-  else if (photoEl.naturalWidth) { state.zoom = true; layoutZoom(true); }
-}
-function pan(dx, dy) { state.panX += dx; state.panY += dy; clampPan(); }
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {      // Chrome/Edge 触控板捏合会发 ctrlKey+wheel;顺带支持 ⌘+滚轮
+    const dy = Math.max(-50, Math.min(50, e.deltaY));
+    setZoom((state.zoom ? state.scale : fitScale()) * Math.exp(-dy * 0.012), e.clientX, e.clientY);
+  } else if (state.zoom) pan(-e.deltaX, -e.deltaY);
+}, {passive: false});
+let gBase = 0;                       // Safari 捏合走 gesture 事件
+stageEl.addEventListener("gesturestart", e => { e.preventDefault(); gBase = state.zoom ? state.scale : fitScale(); });
+stageEl.addEventListener("gesturechange", e => { e.preventDefault(); if (gBase) setZoom(gBase * e.scale, e.clientX, e.clientY); });
+stageEl.addEventListener("gestureend", e => e.preventDefault());
+let drag = null, dragMoved = false;
+stageEl.addEventListener("pointerdown", e => { if (state.zoom) { drag = {x: e.clientX, y: e.clientY}; dragMoved = false; } });
+stageEl.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 2) dragMoved = true;
+  drag = {x: e.clientX, y: e.clientY};
+  pan(dx, dy);
+});
+addEventListener("pointerup", () => { drag = null; });
 
 /* ---------- 数据加载 ---------- */
 async function loadDay(idx, opts) {
@@ -611,8 +653,8 @@ addEventListener("keydown", e => {
     case "Escape": e.preventDefault(); if (state.zoom) exitZoom(); break;
   }
 });
-addEventListener("resize", () => { if (state.zoom) clampPan(); });
-photoEl.addEventListener("click", () => toggleZoom());
+addEventListener("resize", () => { if (state.zoom) { clampPan(); applyZoom(); } });
+photoEl.addEventListener("click", e => { if (dragMoved) { dragMoved = false; return; } toggleZoom(e.clientX, e.clientY); });
 
 /* ---------- 启动 ---------- */
 (async function init() {

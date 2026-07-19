@@ -47,9 +47,9 @@
   #lb{position:fixed;inset:0;background:rgba(5,5,6,.97);z-index:40;display:flex;flex-direction:column}
   #lb.hidden{display:none}
   #lb-stage{flex:1;position:relative;overflow:hidden;display:flex}
-  #lb-stage.zoomed{overflow:auto;display:block}
   #lb-img{max-width:100%;max-height:100%;margin:auto;user-select:none;-webkit-user-drag:none}
-  #lb-stage.zoomed #lb-img{max-width:none;max-height:none;margin:0}
+  #lb-img.zoomed{position:absolute;left:0;top:0;max-width:none;max-height:none;margin:0;cursor:grab}
+  #lb-zoom{position:absolute;right:14px;top:12px;background:rgba(0,0,0,.6);padding:2px 10px;border-radius:99px;display:none;z-index:2}
   #lb-bar{display:flex;align-items:center;gap:14px;padding:8px 16px;background:var(--bg2);border-top:1px solid var(--line)}
   #lb-name{font-weight:600}
   #lb-pos,#lb-day{color:var(--fg2)}
@@ -87,12 +87,12 @@
 <div id="empty" style="display:none">没有匹配的照片</div>
 
 <div id="lb" class="hidden">
-  <div id="lb-stage"><img id="lb-img" alt=""></div>
+  <div id="lb-stage"><img id="lb-img" alt=""><div id="lb-zoom">100%</div></div>
   <div id="lb-bar">
     <span id="lb-name"></span><span id="lb-pos"></span><span id="lb-day"></span>
     <div id="lb-chips"></div>
     <span class="sp"></span>
-    <span id="lb-hint">A/S/D Q/W/E Z/X 改tag · U撤销 · .放大 · Esc关闭</span>
+    <span id="lb-hint">A/S/D Q/W/E Z/X 改tag · U撤销 · .或捏合放大 · Esc关闭</span>
     <button id="lb-open-tagger">去打标器 ↗</button>
   </div>
 </div>
@@ -330,15 +330,75 @@ function lbChips() {
 }
 function closeLB() { $("lb").classList.add("hidden"); state.lb = -1; }
 function lbNav(d) { if (state.lb + d >= 0 && state.lb + d < state.flat.length) { state.lb += d; lbShow(); } }
-function toggleLBZoom() {
-  const st = $("lb-stage"), im = $("lb-img");
-  if (st.classList.contains("zoomed")) { exitLBZoom(); return; }
-  st.classList.add("zoomed");
-  st.scrollLeft = (im.naturalWidth - st.clientWidth) / 2;
-  st.scrollTop = (im.naturalHeight - st.clientHeight) / 2;
+/* 缩放引擎:.或点击=100%↔适应;触控板捏合连续变倍(锚定指针);缩放中双指滚动/拖拽/方向键平移 */
+const ZMAX = 4;
+const lbz = {on: false, scale: 1, panX: 0, panY: 0};
+const lbStage = $("lb-stage"), lbImg = $("lb-img");
+function lbFit() { const r = lbStage.getBoundingClientRect(); return Math.min(r.width / lbImg.naturalWidth, r.height / lbImg.naturalHeight, 1); }
+function lbApply() {
+  lbImg.style.transform = `translate(${lbz.panX}px, ${lbz.panY}px) scale(${lbz.scale})`;
+  $("lb-zoom").textContent = Math.round(lbz.scale * 100) + "%";
 }
-function exitLBZoom() { $("lb-stage").classList.remove("zoomed"); }
-$("lb-img").addEventListener("click", toggleLBZoom);
+function lbClamp() {
+  const r = lbStage.getBoundingClientRect(), w = lbImg.naturalWidth * lbz.scale, h = lbImg.naturalHeight * lbz.scale;
+  lbz.panX = w <= r.width ? (r.width - w) / 2 : Math.min(0, Math.max(r.width - w, lbz.panX));
+  lbz.panY = h <= r.height ? (r.height - h) / 2 : Math.min(0, Math.max(r.height - h, lbz.panY));
+}
+function lbSetZoom(newS, cx, cy) {
+  if (state.lb < 0 || !lbImg.naturalWidth) return;
+  const fs = lbFit();
+  newS = Math.min(ZMAX, Math.max(fs, newS));
+  const r = lbStage.getBoundingClientRect();
+  const px = cx == null ? r.width / 2 : cx - r.left;
+  const py = cy == null ? r.height / 2 : cy - r.top;
+  if (!lbz.on) {
+    lbz.scale = fs;
+    lbz.panX = (r.width - lbImg.naturalWidth * fs) / 2;
+    lbz.panY = (r.height - lbImg.naturalHeight * fs) / 2;
+  }
+  const ix = (px - lbz.panX) / lbz.scale, iy = (py - lbz.panY) / lbz.scale;
+  if (newS <= fs * 1.001) { exitLBZoom(); return; }
+  lbz.on = true;
+  lbz.scale = newS;
+  lbz.panX = px - ix * newS;
+  lbz.panY = py - iy * newS;
+  lbClamp();
+  lbImg.classList.add("zoomed");
+  lbImg.style.transformOrigin = "0 0";
+  lbApply();
+  $("lb-zoom").style.display = "block";
+}
+function exitLBZoom() {
+  lbz.on = false; lbz.scale = 1;
+  lbImg.classList.remove("zoomed");
+  lbImg.style.transform = "";
+  $("lb-zoom").style.display = "none";
+}
+function toggleLBZoom(cx, cy) { lbz.on ? exitLBZoom() : lbSetZoom(1, cx, cy); }
+function lbPan(dx, dy) { if (!lbz.on) return; lbz.panX += dx; lbz.panY += dy; lbClamp(); lbApply(); }
+lbStage.addEventListener("wheel", e => {
+  if (state.lb < 0) return;
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {      // Chrome/Edge 触控板捏合 = ctrlKey+wheel
+    const dy = Math.max(-50, Math.min(50, e.deltaY));
+    lbSetZoom((lbz.on ? lbz.scale : lbFit()) * Math.exp(-dy * 0.012), e.clientX, e.clientY);
+  } else if (lbz.on) lbPan(-e.deltaX, -e.deltaY);
+}, {passive: false});
+let lbGBase = 0;                     // Safari 捏合
+lbStage.addEventListener("gesturestart", e => { e.preventDefault(); lbGBase = lbz.on ? lbz.scale : lbFit(); });
+lbStage.addEventListener("gesturechange", e => { e.preventDefault(); if (lbGBase) lbSetZoom(lbGBase * e.scale, e.clientX, e.clientY); });
+lbStage.addEventListener("gestureend", e => e.preventDefault());
+let lbDrag = null, lbDragMoved = false;
+lbStage.addEventListener("pointerdown", e => { if (lbz.on) { lbDrag = {x: e.clientX, y: e.clientY}; lbDragMoved = false; } });
+lbStage.addEventListener("pointermove", e => {
+  if (!lbDrag) return;
+  const dx = e.clientX - lbDrag.x, dy = e.clientY - lbDrag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 2) lbDragMoved = true;
+  lbDrag = {x: e.clientX, y: e.clientY};
+  lbPan(dx, dy);
+});
+addEventListener("pointerup", () => { lbDrag = null; });
+lbImg.addEventListener("click", e => { if (lbDragMoved) { lbDragMoved = false; return; } toggleLBZoom(e.clientX, e.clientY); });
 $("lb-open-tagger").addEventListener("click", () => {
   const {day, p} = state.flat[state.lb];
   window.open("/tagger?root=" + enc(state.root) + "&dir=" + enc(day.path) + "&file=" + enc(p.name));
@@ -456,19 +516,18 @@ addEventListener("keydown", e => {
     if (e.code === "Slash" || e.code === "KeyH") toast("点开任意照片进入灯箱;灯箱内可用打标键位");
     return;
   }
-  const zoomed = $("lb-stage").classList.contains("zoomed");
   const tag = KEY2TAG[e.code];
   if (tag) { e.preventDefault(); lbSetDim(tag.dim, tag.val); return; }
   switch (e.code) {
     case "Space": case "KeyJ": e.preventDefault(); lbNav(1); break;
     case "KeyK": e.preventDefault(); lbNav(-1); break;
-    case "ArrowRight": e.preventDefault(); zoomed ? $("lb-stage").scrollBy(300, 0) : lbNav(1); break;
-    case "ArrowLeft":  e.preventDefault(); zoomed ? $("lb-stage").scrollBy(-300, 0) : lbNav(-1); break;
-    case "ArrowUp":    if (zoomed) { e.preventDefault(); $("lb-stage").scrollBy(0, -300); } break;
-    case "ArrowDown":  if (zoomed) { e.preventDefault(); $("lb-stage").scrollBy(0, 300); } break;
+    case "ArrowRight": e.preventDefault(); lbz.on ? lbPan(-300, 0) : lbNav(1); break;
+    case "ArrowLeft":  e.preventDefault(); lbz.on ? lbPan(300, 0)  : lbNav(-1); break;
+    case "ArrowUp":    if (lbz.on) { e.preventDefault(); lbPan(0, 300); } break;
+    case "ArrowDown":  if (lbz.on) { e.preventDefault(); lbPan(0, -300); } break;
     case "KeyU": e.preventDefault(); lbUndo(e.shiftKey); break;
     case "Period": e.preventDefault(); toggleLBZoom(); break;
-    case "Escape": e.preventDefault(); zoomed ? exitLBZoom() : closeLB(); break;
+    case "Escape": e.preventDefault(); lbz.on ? exitLBZoom() : closeLB(); break;
   }
 });
 
