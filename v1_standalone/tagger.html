@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>phototag 打标器 v1(单文件版)</title>
+<style>
+  :root{
+    --bg:#111214; --bg2:#1a1c1f; --bg3:#232529; --fg:#e8e8ea; --fg2:#9a9aa0; --line:#2e3136;
+    --sooc:#30d158; --edit:#0a84ff; --trash:#ff453a; --best:#ffd60a; --normal:#98989d;
+    --scenery:#64d2ff; --animal:#ff9f0a; --portrait:#bf5af2; --acc:#0a84ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif;overflow:hidden}
+  #app{display:flex;height:100vh}
+  button{font:inherit;color:inherit;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+  button:hover{border-color:#4a4e55}
+  .primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  #side{width:250px;min-width:250px;background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column}
+  #side-head{padding:12px;border-bottom:1px solid var(--line)}
+  #root-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px}
+  #day-list{flex:1;overflow-y:auto;padding:6px}
+  .day{padding:7px 9px;border-radius:8px;cursor:pointer;margin-bottom:2px}
+  .day:hover{background:var(--bg3)}
+  .day.active{background:#2b3a55}
+  .day .r1{display:flex;justify-content:space-between;gap:8px}
+  .day .ct{color:var(--fg2);font-variant-numeric:tabular-nums}
+  .day .bar{height:3px;background:#33363c;border-radius:2px;margin-top:5px;overflow:hidden}
+  .day .bar i{display:block;height:100%;background:var(--sooc);width:0}
+  #side-foot{padding:10px 12px;border-top:1px solid var(--line);color:var(--fg2);font-size:12px}
+  #main{flex:1;display:flex;flex-direction:column;min-width:0}
+  #stage{flex:1;position:relative;overflow:hidden;background:#0a0a0b}
+  #photo{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;user-select:none;-webkit-user-drag:none}
+  #photo.zoomed{inset:auto;max-width:none;max-height:none;left:0;top:0;margin:0}
+  #photo.hidden{display:none}
+  #badges{position:absolute;left:14px;top:12px;display:flex;gap:8px;pointer-events:none}
+  .chip{padding:3px 12px;border-radius:99px;font-weight:600;font-size:15px;color:#000;box-shadow:0 1px 6px rgba(0,0,0,.5)}
+  #zoom-ind{position:absolute;right:14px;top:12px;background:rgba(0,0,0,.6);padding:2px 10px;border-radius:99px;display:none}
+  #empty-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--fg2);flex-direction:column;gap:14px;text-align:center}
+  #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:rgba(20,20,22,.92);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;white-space:nowrap;z-index:5}
+  #strip{height:74px;background:var(--bg2);border-top:1px solid var(--line);display:flex;gap:4px;overflow-x:auto;padding:6px;scroll-behavior:smooth}
+  #strip.hidden{display:none}
+  .fsl{position:relative;flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-width:74px;background:var(--bg3);border-radius:6px;cursor:pointer;outline:2px solid transparent;font:12px/1.3 ui-monospace,Menlo,monospace;flex-direction:column;gap:3px;padding:4px 6px}
+  .fsl.cur{outline-color:#fff}
+  .fsl .dot{width:9px;height:9px;border-radius:50%;background:transparent}
+  .fsl .star{position:absolute;right:4px;top:2px;color:var(--best);font-size:11px}
+  #hud{display:flex;align-items:center;gap:18px;background:var(--bg2);border-top:1px solid var(--line);padding:8px 14px}
+  #hud-info{min-width:200px}
+  #hud-file{font-weight:600}
+  #hud-pos,#hud-day{color:var(--fg2);margin-left:8px;font-variant-numeric:tabular-nums}
+  #hud-keys{flex:1;display:flex;gap:16px;justify-content:center}
+  .kgroup{display:flex;align-items:center;gap:5px}
+  .kgroup .gl{color:var(--fg2);margin-right:2px}
+  .kcap{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 4px;border:1px solid var(--line);border-radius:6px;color:var(--fg2);cursor:pointer}
+  .kcap b{font:600 11px/1.5 ui-monospace,Menlo,monospace;background:#2c2f34;border-radius:4px;padding:0 5px;color:var(--fg)}
+  .kcap.on{color:#000;font-weight:600}
+  .kcap.on b{background:rgba(0,0,0,.25);color:#000}
+  #hud-right{display:flex;gap:10px;align-items:center;min-width:210px;justify-content:flex-end;color:var(--fg2)}
+  #hud-auto.on{color:var(--sooc)}
+  #hud-save.dirty{color:var(--best)}
+  #hud-save.err{color:var(--trash)}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50}
+  .modal.hidden{display:none}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;width:660px;max-width:92vw;padding:16px}
+  #help-grid{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px 14px;align-items:center;margin-top:6px}
+  #help-grid b{font:600 12px/1.6 ui-monospace,Menlo,monospace;background:#2c2f34;border-radius:4px;padding:1px 7px;justify-self:start;white-space:nowrap}
+  #help-grid span{color:var(--fg2)}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div id="side-head">
+      <div id="root-name">—</div>
+      <button id="btn-root">📁 选择照片根目录 <b>O</b></button>
+    </div>
+    <div id="day-list"></div>
+    <div id="side-foot">v1 单文件版 · 需要 Chrome/Edge<br><span id="side-total"></span></div>
+  </aside>
+  <main id="main">
+    <div id="stage">
+      <img id="photo" class="hidden" alt="">
+      <div id="empty-hint">
+        <div style="font-size:40px">📷</div>
+        <div id="hint-text">选择照片根目录开始(如 ZTSSD 的 Sony A7V)</div>
+        <div style="display:flex;gap:10px">
+          <button class="primary" onclick="pickRoot()">选择照片根目录</button>
+          <button id="btn-resume" style="display:none" onclick="resumeRoot()"></button>
+        </div>
+      </div>
+      <div id="badges"></div>
+      <div id="zoom-ind">100%</div>
+      <div id="toast"></div>
+    </div>
+    <div id="strip" class="hidden"></div>
+    <footer id="hud">
+      <div id="hud-info"><span id="hud-file">—</span><span id="hud-pos"></span><span id="hud-day"></span></div>
+      <div id="hud-keys"></div>
+      <div id="hud-right">
+        <span id="hud-auto" title="打完状态自动下一张 (F)">连进F</span>
+        <span id="hud-save">已保存</span>
+        <button onclick="toggleHelp()">H 帮助</button>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<div id="modal-help" class="modal hidden"><div class="card">
+  <h3>键位 <span style="color:var(--fg2);font-weight:400;font-size:13px">左手三排=三个维度,同键再按=取消;右手翻页</span></h3>
+  <div id="help-grid">
+    <b>Q / W / E</b><span>类型:风景 / 动物 / 人像</span> <b>Space → J</b><span>下一张</span>
+    <b>A / S / D</b><span>状态:直出 / 大修 / 废片</span> <b>← K</b><span>上一张</span>
+    <b>Z / X</b><span>质量:绝美 / 普通</span>            <b>U ⌘Z</b><span>撤销(⇧ 重做)</span>
+    <b>⌫</b><span>清空本张全部 tag</span>               <b>N</b><span>下一张未打状态的</span>
+    <b>F</b><span>「打完状态自动下一张」开关</span>       <b>.</b><span>100% ↔ 适应(方向键平移)</span>
+    <b>Tab</b><span>照片列表条</span>                    <b>[ / ]</b><span>上一天 / 下一天</span>
+    <b>O</b><span>换目录</span>                          <b>H / ?</b><span>本帮助</span>
+  </div>
+  <div style="margin-top:14px;text-align:right"><button onclick="toggleHelp()">关闭 (Esc)</button></div>
+</div></div>
+
+<script>
+"use strict";
+/* ============ 常量(与 v2 完全一致的键位与 tag 语义) ============ */
+const DIMS = {
+  type:    {label:"类型", keys:{KeyQ:"scenery", KeyW:"animal", KeyE:"portrait"},
+            zh:{scenery:"风景", animal:"动物", portrait:"人像"},
+            color:{scenery:"var(--scenery)", animal:"var(--animal)", portrait:"var(--portrait)"}},
+  status:  {label:"状态", keys:{KeyA:"sooc", KeyS:"edit", KeyD:"trash"},
+            zh:{sooc:"直出", edit:"大修", trash:"废片"},
+            color:{sooc:"var(--sooc)", edit:"var(--edit)", trash:"var(--trash)"}},
+  quality: {label:"质量", keys:{KeyZ:"best", KeyX:"normal"},
+            zh:{best:"绝美", normal:"普通"},
+            color:{best:"var(--best)", normal:"var(--normal)"}},
+};
+const KEY2TAG = {}, KEYCAP = {KeyQ:"Q",KeyW:"W",KeyE:"E",KeyA:"A",KeyS:"S",KeyD:"D",KeyZ:"Z",KeyX:"X"};
+for (const [dim, d] of Object.entries(DIMS))
+  for (const [code, val] of Object.entries(d.keys)) KEY2TAG[code] = {dim, val};
+const TAGFILE = "phototags.json";
+const isPhotoName = n => !n.startsWith(".") && (/\.jpe?g$/i).test(n);
+const guessDate = s => { const m = s.match(/(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})/); return m ? m[1] + "-" + m[2] + "-" + m[3] : ""; };
+
+/* ============ 状态 ============ */
+const state = {
+  rootHandle: null, rootName: "",
+  days: [], dayIdx: -1,          // day: {handle, name, date, count, tagged}
+  photos: [], tags: {}, cur: -1, // photos: [name]
+  zoom: false, panX: 0, panY: 0,
+  auto: localStorage.getItem("pt1:auto") !== "0",
+  undoStack: [], redoStack: [],
+  stripOn: false, stripDay: null,
+  dirtyDays: new Set(), bakDone: new Set(), saving: false, saveErr: false,
+};
+const $ = id => document.getElementById(id);
+const photoEl = $("photo");
+let toastTimer = null;
+function toast(msg, ms) {
+  const t = $("toast"); t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.opacity = 0, ms || 1300);
+}
+const curPhoto = () => state.photos[state.cur] || null;
+const curDay = () => state.days[state.dayIdx] || null;
+
+/* ============ IndexedDB(记住目录句柄) ============ */
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("phototag_v1", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbSet(k, v) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put(v, k);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbGet(k) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const rq = db.transaction("kv").objectStore("kv").get(k);
+    rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+  });
+}
+
+/* ============ tag 读写(文件 + localStorage 双保险) ============ */
+function mirrorKey(day) { return "v1m:" + state.rootName + "/" + day.name; }
+function normTags(t) {
+  const o = {};
+  for (const dim of Object.keys(DIMS)) if (t && t[dim]) o[dim] = t[dim];
+  if (t && t.t) o.t = t.t;
+  return o;
+}
+async function readDayTags(day) {
+  let fileTags = {};
+  try {
+    const fh = await day.handle.getFileHandle(TAGFILE);
+    const txt = await (await fh.getFile()).text();
+    const doc = JSON.parse(txt);
+    if (doc && typeof doc.photos === "object") fileTags = doc.photos;
+  } catch (e) { /* 不存在或损坏 → 靠镜像 */ }
+  let mirror = {};
+  try { mirror = JSON.parse(localStorage.getItem(mirrorKey(day)) || "{}").photos || {}; } catch (e) {}
+  const merged = {...fileTags};
+  let mirrorNewer = false;
+  for (const [n, t] of Object.entries(mirror)) {
+    if (!merged[n] || (t.t || 0) > (merged[n].t || 0)) { merged[n] = t; mirrorNewer = true; }
+  }
+  if (mirrorNewer) { state.dirtyDays.add(day.name); scheduleSave(); }
+  return merged;
+}
+function mirrorSave(day, tags) {
+  try { localStorage.setItem(mirrorKey(day), JSON.stringify({updated: Date.now(), photos: tags})); }
+  catch (e) { /* 配额满等,忽略 */ }
+}
+let saveTimer = null;
+function scheduleSave() {
+  renderSave();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDirty, 400);
+}
+async function saveDirty() {
+  if (state.saving) { scheduleSave(); return; }
+  state.saving = true;
+  try {
+    for (const dayName of [...state.dirtyDays]) {
+      const day = state.days.find(d => d.name === dayName);
+      if (!day) { state.dirtyDays.delete(dayName); continue; }
+      const tags = day === curDay() ? state.tags : day._tags;
+      if (!tags) { state.dirtyDays.delete(dayName); continue; }
+      const doc = {version: 1, app: "phototag", updated: new Date().toISOString(), photos: tags};
+      try {
+        if (!state.bakDone.has(dayName)) {
+          try {  // 本次会话首次写前留一份 .bak
+            const old = await day.handle.getFileHandle(TAGFILE);
+            const txt = await (await old.getFile()).text();
+            const bh = await day.handle.getFileHandle(TAGFILE + ".bak", {create: true});
+            const bw = await bh.createWritable(); await bw.write(txt); await bw.close();
+          } catch (e) { /* 原文件不存在 */ }
+          state.bakDone.add(dayName);
+        }
+        const fh = await day.handle.getFileHandle(TAGFILE, {create: true});
+        const w = await fh.createWritable();          // 关闭时原子替换
+        await w.write(JSON.stringify(doc, null, 1));
+        await w.close();
+        state.dirtyDays.delete(dayName);
+        state.saveErr = false;
+      } catch (e) {
+        state.saveErr = true;
+        setTimeout(scheduleSave, 3000);
+      }
+    }
+  } finally { state.saving = false; renderSave(); }
+}
+function renderSave() {
+  const el = $("hud-save");
+  if (state.saveErr)            { el.textContent = "写入失败,重试中(已有本地镜像)"; el.className = "err"; }
+  else if (state.dirtyDays.size){ el.textContent = "保存中…"; el.className = "dirty"; }
+  else                          { el.textContent = "已保存"; el.className = ""; }
+}
+addEventListener("beforeunload", e => { if (state.dirtyDays.size) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ============ tag 变更 / 撤销(与 v2 相同语义) ============ */
+function tagsEqual(a, b) {
+  const na = normTags(a), nb = normTags(b); delete na.t; delete nb.t;
+  return JSON.stringify(na) === JSON.stringify(nb);
+}
+function commit(day, name, before, after, opts) {
+  after = normTags(after); delete after.t;
+  if (tagsEqual(before, after)) return;
+  if (!(opts && opts.noHistory)) {
+    const b = normTags(before); delete b.t;
+    state.undoStack.push({dayName: day.name, name, before: b, after: {...after}});
+    if (state.undoStack.length > 800) state.undoStack.shift();
+    state.redoStack.length = 0;
+  }
+  const tags = day === curDay() ? state.tags : day._tags;
+  if (!tags) return;
+  if (Object.keys(after).length) tags[name] = {...after, t: Math.floor(Date.now() / 1000)};
+  else delete tags[name];
+  mirrorSave(day, tags);
+  state.dirtyDays.add(day.name);
+  scheduleSave();
+  if (day === curDay()) { renderBadges(); renderHudKeys(); renderStripDot(); updateDayCounts(); }
+}
+function setDim(dim, val) {
+  const p = curPhoto(); if (!p) return;
+  const before = state.tags[p] || {};
+  const after = {...normTags(before)}; delete after.t;
+  const wasSet = after[dim] === val;
+  if (wasSet) delete after[dim]; else after[dim] = val;
+  commit(curDay(), p, before, after);
+  if (!wasSet && dim === "status" && state.auto)
+    setTimeout(() => { if (state.cur < state.photos.length - 1) go(state.cur + 1); }, 120);
+}
+function clearCur() {
+  const p = curPhoto(); if (!p) return;
+  const before = state.tags[p] || {};
+  const b = normTags(before); delete b.t;
+  if (!Object.keys(b).length) { toast("本来就没有 tag"); return; }
+  commit(curDay(), p, before, {});
+  toast("已清空 tag");
+}
+async function applyHistory(entry, tags) {
+  const idx = state.days.findIndex(d => d.name === entry.dayName);
+  if (idx < 0) return;
+  if (idx !== state.dayIdx) await loadDay(idx, {file: entry.name});
+  commit(state.days[idx], entry.name, state.tags[entry.name] || {}, tags, {noHistory: true});
+  const i = state.photos.indexOf(entry.name);
+  if (i >= 0) go(i, {keepZoom: true});
+}
+async function undo() {
+  const e = state.undoStack.pop();
+  if (!e) { toast("没有可撤销的操作"); return; }
+  state.redoStack.push(e);
+  await applyHistory(e, e.before);
+  toast("撤销 ↩ " + e.name);
+}
+async function redo() {
+  const e = state.redoStack.pop();
+  if (!e) { toast("没有可重做的操作"); return; }
+  state.undoStack.push(e);
+  await applyHistory(e, e.after);
+  toast("重做 ↪ " + e.name);
+}
+
+/* ============ 目录扫描 ============ */
+async function scanRoot(rootHandle) {
+  const days = [];
+  async function walk(handle, rel, depth) {
+    if (depth > 6 || days.length >= 800) return;
+    let nPhoto = 0;
+    const subdirs = [];
+    for await (const [name, h] of handle.entries()) {
+      if (name.startsWith(".") || name === "_trash_bin") continue;
+      if (h.kind === "file") { if (isPhotoName(name)) nPhoto++; }
+      else subdirs.push([name, h]);
+    }
+    if (nPhoto) {
+      const nm = rel || rootHandle.name;
+      days.push({handle, name: nm, date: guessDate(nm.split("/").pop()) || guessDate(nm), count: nPhoto, tagged: 0});
+    }
+    subdirs.sort((a, b) => a[0].localeCompare(b[0]));
+    for (const [name, h] of subdirs) await walk(h, rel ? rel + "/" + name : name, depth + 1);
+  }
+  await walk(rootHandle, "", 0);
+  days.sort((a, b) => (a.date || "0").localeCompare(b.date || "0") || a.name.localeCompare(b.name));
+  return days;
+}
+async function listDayPhotos(day) {
+  const names = [];
+  for await (const [name, h] of day.handle.entries())
+    if (h.kind === "file" && isPhotoName(name)) names.push(name);
+  names.sort();
+  return names;
+}
+
+/* ============ 根目录选择 ============ */
+async function pickRoot() {
+  if (!window.showDirectoryPicker) { toast("需要 Chrome / Edge 浏览器(或改用 v2 服务器版)", 4000); return; }
+  try {
+    const h = await showDirectoryPicker({mode: "readwrite"});
+    await idbSet("root", h);
+    await useRoot(h);
+  } catch (e) { if (e.name !== "AbortError") toast("⚠️ " + e.message, 3000); }
+}
+async function resumeRoot() {
+  const h = await idbGet("root");
+  if (!h) return;
+  const st = await h.requestPermission({mode: "readwrite"});
+  if (st === "granted") await useRoot(h);
+  else toast("未授权,重新选择目录吧");
+}
+async function useRoot(h) {
+  state.rootHandle = h; state.rootName = h.name;
+  $("root-name").textContent = h.name; $("root-name").title = h.name;
+  $("hint-text").textContent = "扫描中…";
+  const days = await scanRoot(h);
+  state.days = days;
+  if (!days.length) { $("hint-text").textContent = "该目录下没有含 JPG 的文件夹"; renderDayList(); return; }
+  // 读每个天的 tag 计数(顺带缓存)
+  await Promise.all(days.map(async d => {
+    d._tags = await readDayTags(d);
+    d.tagged = Object.values(d._tags).filter(t => t.status || t.type || t.quality).length;
+  }));
+  renderDayList();
+  const last = localStorage.getItem("pt1:lastday:" + h.name);
+  let idx = days.findIndex(d => d.name === last);
+  if (idx < 0) idx = days.length - 1;
+  await loadDay(idx);
+}
+
+/* ============ 天加载 / 照片显示 ============ */
+const urlCache = new Map();   // name -> objectURL (LRU 8)
+async function photoURL(day, name) {
+  const key = day.name + "/" + name;
+  if (urlCache.has(key)) { const u = urlCache.get(key); urlCache.delete(key); urlCache.set(key, u); return u; }
+  const fh = await day.handle.getFileHandle(name);
+  const url = URL.createObjectURL(await fh.getFile());
+  urlCache.set(key, url);
+  if (urlCache.size > 8) { const [k0, u0] = urlCache.entries().next().value; URL.revokeObjectURL(u0); urlCache.delete(k0); }
+  return url;
+}
+async function loadDay(idx, opts) {
+  if (idx < 0 || idx >= state.days.length) return;
+  await saveDirty();                       // 换天前落盘
+  state.dayIdx = idx;
+  const d = state.days[idx];
+  state.photos = await listDayPhotos(d);
+  d.count = state.photos.length;
+  if (!d._tags) d._tags = await readDayTags(d);
+  state.tags = d._tags;
+  state.stripDay = null;
+  renderDayList(); renderStrip();
+  localStorage.setItem("pt1:lastday:" + state.rootName, d.name);
+  if (!state.photos.length) { state.cur = -1; photoEl.classList.add("hidden"); $("empty-hint").style.display = "flex"; return; }
+  let i = 0;
+  if (opts && opts.file) i = Math.max(0, state.photos.indexOf(opts.file));
+  else i = Math.min(+localStorage.getItem("pt1:pos:" + state.rootName + "/" + d.name) || 0, state.photos.length - 1);
+  go(i);
+}
+let loadSeq = 0;
+async function go(i, opts) {
+  if (!state.photos.length) return;
+  i = Math.max(0, Math.min(state.photos.length - 1, i));
+  state.cur = i;
+  const d = curDay(), name = curPhoto();
+  if (!(opts && opts.keepZoom)) exitZoom();
+  $("empty-hint").style.display = "none";
+  photoEl.classList.remove("hidden");
+  const seq = ++loadSeq;
+  try {
+    const url = await photoURL(d, name);
+    if (seq !== loadSeq) return;           // 已经翻走了
+    photoEl.src = url;
+  } catch (e) { toast("⚠️ 读取失败:" + name, 2000); }
+  for (const k of [1, 2, -1]) { const n = state.photos[i + k]; if (n) photoURL(d, n).catch(() => {}); }
+  renderHudInfo(); renderBadges(); renderHudKeys(); highlightStrip();
+  localStorage.setItem("pt1:pos:" + state.rootName + "/" + d.name, i);
+}
+photoEl.addEventListener("load", () => { if (state.zoom) layoutZoom(true); });
+
+/* ============ 缩放 ============ */
+function stageSize() { const r = $("stage").getBoundingClientRect(); return [r.width, r.height]; }
+function clampPan() {
+  const [sw, sh] = stageSize(), nw = photoEl.naturalWidth, nh = photoEl.naturalHeight;
+  state.panX = nw <= sw ? (sw - nw) / 2 : Math.min(0, Math.max(sw - nw, state.panX));
+  state.panY = nh <= sh ? (sh - nh) / 2 : Math.min(0, Math.max(sh - nh, state.panY));
+  photoEl.style.transform = `translate(${state.panX}px, ${state.panY}px)`;
+}
+function layoutZoom(center) {
+  const [sw, sh] = stageSize();
+  if (center) { state.panX = (sw - photoEl.naturalWidth) / 2; state.panY = (sh - photoEl.naturalHeight) / 2; }
+  photoEl.classList.add("zoomed"); clampPan();
+  $("zoom-ind").style.display = "block";
+}
+function exitZoom() {
+  state.zoom = false;
+  photoEl.classList.remove("zoomed"); photoEl.style.transform = "";
+  $("zoom-ind").style.display = "none";
+}
+function toggleZoom() {
+  if (!curPhoto()) return;
+  if (state.zoom) exitZoom();
+  else if (photoEl.naturalWidth) { state.zoom = true; layoutZoom(true); }
+}
+function pan(dx, dy) { state.panX += dx; state.panY += dy; clampPan(); }
+photoEl.addEventListener("click", toggleZoom);
+addEventListener("resize", () => { if (state.zoom) clampPan(); });
+
+/* ============ 渲染 ============ */
+function renderBadges() {
+  const p = curPhoto();
+  const t = (p && state.tags[p]) || {};
+  const html = [];
+  for (const [dim, d] of Object.entries(DIMS))
+    if (t[dim]) html.push(`<span class="chip" style="background:${d.color[t[dim]]}">${t[dim] === "best" ? "★ " : ""}${d.zh[t[dim]]}</span>`);
+  $("badges").innerHTML = html.join("");
+}
+function renderHudKeys() {
+  const p = curPhoto();
+  const t = (p && state.tags[p]) || {};
+  const html = [];
+  for (const [dim, d] of Object.entries(DIMS)) {
+    const caps = Object.entries(d.keys).map(([code, val]) => {
+      const on = t[dim] === val;
+      return `<span class="kcap${on ? " on" : ""}" style="${on ? "background:" + d.color[val] + ";border-color:transparent" : ""}"
+        onclick="setDim('${dim}','${val}')"><b>${KEYCAP[code]}</b>${d.zh[val]}</span>`;
+    }).join("");
+    html.push(`<span class="kgroup"><span class="gl">${d.label}</span>${caps}</span>`);
+  }
+  $("hud-keys").innerHTML = html.join("");
+}
+function renderHudInfo() {
+  const p = curPhoto(), d = curDay();
+  $("hud-file").textContent = p || "—";
+  $("hud-pos").textContent = p ? (state.cur + 1) + " / " + state.photos.length : "";
+  $("hud-day").textContent = d ? d.name : "";
+  document.title = (p ? p + " — " : "") + "phototag v1";
+}
+function renderAuto() { const el = $("hud-auto"); el.classList.toggle("on", state.auto); el.textContent = "连进F" + (state.auto ? "·开" : "·关"); }
+function renderDayList() {
+  const list = [...state.days].reverse();
+  $("day-list").innerHTML = list.map(d => {
+    const i = state.days.indexOf(d);
+    const pct = d.count ? Math.round(100 * d.tagged / d.count) : 0;
+    return `<div class="day${i === state.dayIdx ? " active" : ""}" data-i="${i}" onclick="loadDay(${i})">
+      <div class="r1"><span>${d.name}</span><span class="ct">${d.tagged}/${d.count}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div></div>`;
+  }).join("");
+  const tot = state.days.reduce((s, d) => s + d.count, 0);
+  $("side-total").textContent = state.days.length + " 天 · " + tot + " 张";
+}
+function updateDayCounts() {
+  const d = curDay(); if (!d) return;
+  d.tagged = Object.entries(state.tags).filter(([n, t]) => state.photos.includes(n) && (t.status || t.type || t.quality)).length;
+  const el = $("day-list").querySelector(`.day[data-i="${state.dayIdx}"]`);
+  if (el) {
+    el.querySelector(".ct").textContent = d.tagged + "/" + d.count;
+    el.querySelector(".bar i").style.width = (d.count ? Math.round(100 * d.tagged / d.count) : 0) + "%";
+  }
+}
+function renderStrip() {
+  const d = curDay();
+  if (!state.stripOn || !d) return;
+  if (state.stripDay !== d.name) {
+    state.stripDay = d.name;
+    $("strip").innerHTML = state.photos.map((n, i) =>
+      `<div class="fsl" data-i="${i}" onclick="go(${i})"><span>${n.replace(/\.(jpe?g)$/i, "")}</span><i class="dot"></i><i class="star"></i></div>`).join("");
+    for (const el of $("strip").children) refreshStripItem(el);
+  }
+  highlightStrip();
+}
+function refreshStripItem(el) {
+  const n = state.photos[+el.dataset.i]; if (!n) return;
+  const t = state.tags[n] || {};
+  el.querySelector(".dot").style.background = t.status ? `var(--${t.status})` : "transparent";
+  el.querySelector(".star").textContent = t.quality === "best" ? "★" : "";
+}
+function renderStripDot() {
+  if (!state.stripOn) return;
+  const el = $("strip").querySelector(`.fsl[data-i="${state.cur}"]`);
+  if (el) refreshStripItem(el);
+}
+function highlightStrip() {
+  if (!state.stripOn) return;
+  for (const el of $("strip").querySelectorAll(".fsl.cur")) el.classList.remove("cur");
+  const el = $("strip").querySelector(`.fsl[data-i="${state.cur}"]`);
+  if (el) { el.classList.add("cur"); el.scrollIntoView({block: "nearest", inline: "center"}); }
+}
+function toggleStrip() {
+  state.stripOn = !state.stripOn;
+  $("strip").classList.toggle("hidden", !state.stripOn);
+  if (state.stripOn) renderStrip();
+}
+function toggleHelp() { $("modal-help").classList.toggle("hidden"); }
+
+/* ============ 导航 ============ */
+function dayNav(delta) {
+  const i = state.dayIdx + delta;
+  if (i < 0) { toast("已经是最早一天"); return; }
+  if (i >= state.days.length) { toast("已经是最新一天"); return; }
+  loadDay(i);
+}
+function nextUntagged() {
+  const n = state.photos.length; if (!n) return;
+  for (let k = 1; k <= n; k++) {
+    const i = (state.cur + k) % n;
+    const t = state.tags[state.photos[i]];
+    if (!t || !t.status) { go(i); if (i <= state.cur) toast("已从头循环"); return; }
+  }
+  toast("本日「状态」已全部打完 ✓");
+}
+
+/* ============ 键盘 ============ */
+addEventListener("keydown", e => {
+  if (e.target instanceof HTMLInputElement) return;
+  if (!$("modal-help").classList.contains("hidden")) { if (e.key === "Escape" || e.code === "KeyH") toggleHelp(); return; }
+  if (e.metaKey && e.code === "KeyZ") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = KEY2TAG[e.code];
+  if (tag) { e.preventDefault(); setDim(tag.dim, tag.val); return; }
+  switch (e.code) {
+    case "Space": case "KeyJ": e.preventDefault(); go(state.cur + 1); break;
+    case "KeyK": e.preventDefault(); go(state.cur - 1); break;
+    case "ArrowRight": e.preventDefault(); state.zoom ? pan(-300, 0) : go(state.cur + 1); break;
+    case "ArrowLeft":  e.preventDefault(); state.zoom ? pan(300, 0)  : go(state.cur - 1); break;
+    case "ArrowUp":    if (state.zoom) { e.preventDefault(); pan(0, 300); } break;
+    case "ArrowDown":  if (state.zoom) { e.preventDefault(); pan(0, -300); } break;
+    case "KeyU": e.preventDefault(); e.shiftKey ? redo() : undo(); break;
+    case "Backspace": e.preventDefault(); clearCur(); break;
+    case "KeyF": e.preventDefault(); state.auto = !state.auto;
+      localStorage.setItem("pt1:auto", state.auto ? "1" : "0"); renderAuto();
+      toast("自动下一张:" + (state.auto ? "开" : "关")); break;
+    case "KeyN": e.preventDefault(); nextUntagged(); break;
+    case "Period": e.preventDefault(); toggleZoom(); break;
+    case "Tab": e.preventDefault(); toggleStrip(); break;
+    case "BracketLeft":  e.preventDefault(); dayNav(-1); break;
+    case "BracketRight": e.preventDefault(); dayNav(1); break;
+    case "KeyH": case "Slash": e.preventDefault(); toggleHelp(); break;
+    case "KeyO": e.preventDefault(); pickRoot(); break;
+    case "Escape": e.preventDefault(); if (state.zoom) exitZoom(); break;
+  }
+});
+$("btn-root").addEventListener("click", pickRoot);
+
+/* ============ 启动 ============ */
+(async function init() {
+  renderAuto(); renderHudKeys(); renderSave();
+  if (!window.showDirectoryPicker)
+    $("hint-text").innerHTML = "⚠️ 此浏览器不支持 File System Access API<br>请用 Chrome / Edge 打开,或使用 v2 服务器版";
+  try {
+    const h = await idbGet("root");
+    if (h) {
+      const st = await h.queryPermission({mode: "readwrite"});
+      if (st === "granted") { await useRoot(h); return; }
+      const b = $("btn-resume");
+      b.style.display = ""; b.textContent = "继续上次:" + h.name;
+    }
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
