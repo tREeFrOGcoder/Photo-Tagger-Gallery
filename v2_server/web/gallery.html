@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>phototag 画廊</title>
+<style>
+  :root{
+    --bg:#111214; --bg2:#1a1c1f; --bg3:#232529; --fg:#e8e8ea; --fg2:#9a9aa0; --line:#2e3136;
+    --sooc:#30d158; --edit:#0a84ff; --trash:#ff453a; --best:#ffd60a; --normal:#98989d;
+    --scenery:#64d2ff; --animal:#ff9f0a; --portrait:#bf5af2; --acc:#0a84ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+  button{font:inherit;color:inherit;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+  button:hover{border-color:#4a4e55}
+  input{font:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:4px 9px}
+  .primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  /* ---- 顶栏 ---- */
+  #top{position:sticky;top:0;z-index:10;background:rgba(20,21,24,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-direction:column;gap:8px}
+  #row1{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  #root-name{font-weight:700;font-size:16px}
+  #count{color:var(--fg2)}
+  #row1 .sp{flex:1}
+  #row2{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .fgroup{display:flex;align-items:center;gap:5px}
+  .fgroup .gl{color:var(--fg2);margin-right:1px}
+  .fchip{border:1px solid var(--line);border-radius:99px;padding:1px 11px;cursor:pointer;color:var(--fg2);user-select:none;white-space:nowrap}
+  .fchip small{opacity:.75;margin-left:3px;font-variant-numeric:tabular-nums}
+  .fchip.on{color:#000;font-weight:600;border-color:transparent}
+  #search{width:170px}
+  .dr{color:var(--fg2)}
+  /* ---- 时间线 ---- */
+  #tl{padding:8px 16px 80px}
+  .sec h2{font-size:15px;margin:18px 0 8px;display:flex;align-items:baseline;gap:10px}
+  .sec h2 small{color:var(--fg2);font-weight:400}
+  .sec h2 a{color:var(--acc);font-size:12px;text-decoration:none;font-weight:400}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:6px}
+  .it{position:relative;aspect-ratio:3/2;background:#1b1d20;border-radius:6px;overflow:hidden;cursor:pointer}
+  .it img{width:100%;height:100%;object-fit:cover;display:block}
+  .it .dot{position:absolute;left:6px;bottom:6px;width:10px;height:10px;border-radius:50%;box-shadow:0 0 4px #000}
+  .it .star{position:absolute;right:6px;top:3px;color:var(--best);font-size:15px;text-shadow:0 0 4px #000}
+  .it .ty{position:absolute;left:6px;top:5px;font-size:11px;padding:0 7px;border-radius:99px;color:#000;font-weight:600}
+  .it:hover::after{content:attr(data-name);position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);font-size:11px;padding:1px 6px;color:#ddd}
+  #empty{color:var(--fg2);text-align:center;padding:60px 0}
+  /* ---- 灯箱 ---- */
+  #lb{position:fixed;inset:0;background:rgba(5,5,6,.97);z-index:40;display:flex;flex-direction:column}
+  #lb.hidden{display:none}
+  #lb-stage{flex:1;position:relative;overflow:hidden;display:flex}
+  #lb-stage.zoomed{overflow:auto;display:block}
+  #lb-img{max-width:100%;max-height:100%;margin:auto;user-select:none;-webkit-user-drag:none}
+  #lb-stage.zoomed #lb-img{max-width:none;max-height:none;margin:0}
+  #lb-bar{display:flex;align-items:center;gap:14px;padding:8px 16px;background:var(--bg2);border-top:1px solid var(--line)}
+  #lb-name{font-weight:600}
+  #lb-pos,#lb-day{color:var(--fg2)}
+  #lb-chips{display:flex;gap:6px}
+  .chip{padding:1px 10px;border-radius:99px;font-weight:600;color:#000;font-size:13px}
+  #lb-bar .sp{flex:1}
+  #lb-hint{color:var(--fg2);font-size:12px}
+  /* ---- 导出弹窗 ---- */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60}
+  .modal.hidden{display:none}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;width:560px;max-width:92vw;max-height:82vh;display:flex;flex-direction:column;padding:16px;gap:10px}
+  #brow-list{flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:8px;min-height:180px;max-height:40vh}
+  .brow-item{display:flex;justify-content:space-between;padding:6px 12px;cursor:pointer;border-bottom:1px solid #222428}
+  .brow-item:hover{background:var(--bg3)}
+  .brow-item .c{color:var(--fg2)}
+  #ex-bar{height:8px;background:#2a2d31;border-radius:4px;overflow:hidden}
+  #ex-bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s}
+  #ex-log{color:var(--fg2);font-size:12px;max-height:120px;overflow-y:auto;white-space:pre-wrap}
+  #toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:rgba(20,20,22,.94);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;z-index:99;white-space:nowrap}
+</style>
+</head>
+<body>
+<header id="top">
+  <div id="row1">
+    <span id="root-name">—</span>
+    <button id="btn-root">📁 换目录</button>
+    <span id="count"></span>
+    <span class="sp"></span>
+    <input id="search" placeholder="文件名搜索…">
+    <button id="btn-export" class="primary">导出当前筛选…</button>
+  </div>
+  <div id="row2"></div>
+</header>
+<div id="tl"></div>
+<div id="empty" style="display:none">没有匹配的照片</div>
+
+<div id="lb" class="hidden">
+  <div id="lb-stage"><img id="lb-img" alt=""></div>
+  <div id="lb-bar">
+    <span id="lb-name"></span><span id="lb-pos"></span><span id="lb-day"></span>
+    <div id="lb-chips"></div>
+    <span class="sp"></span>
+    <span id="lb-hint">A/S/D Q/W/E Z/X 改tag · U撤销 · .放大 · Esc关闭</span>
+    <button id="lb-open-tagger">去打标器 ↗</button>
+  </div>
+</div>
+
+<div id="modal-root" class="modal hidden"><div class="card">
+  <h3>选择照片根目录</h3>
+  <div style="display:flex;gap:8px"><input id="brow-input" style="flex:1" spellcheck="false"><button id="brow-go">跳转</button></div>
+  <div id="brow-roots" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+  <div id="brow-list"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span id="brow-cur" style="color:var(--fg2);font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <div style="display:flex;gap:8px"><button onclick="closeModals()">取消</button><button id="brow-use" class="primary">✓ 就用这个目录</button></div>
+  </div>
+</div></div>
+
+<div id="modal-export" class="modal hidden"><div class="card">
+  <h3>导出当前筛选结果</h3>
+  <div id="ex-summary" style="color:var(--fg2)"></div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span>目标目录</span><input id="ex-dest" style="flex:1" spellcheck="false">
+  </div>
+  <div style="color:var(--fg2);font-size:12px">按天建子文件夹复制;同名同大小的文件跳过;tag 会写入目标目录的 phototags.json。</div>
+  <div id="ex-bar" style="display:none"><i></i></div>
+  <div id="ex-log"></div>
+  <div style="display:flex;justify-content:flex-end;gap:8px">
+    <button onclick="closeModals()">关闭</button>
+    <button id="ex-start" class="primary">开始导出</button>
+  </div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const DIMS = {
+  status:  {label:"状态", order:["sooc","edit","trash"], keys:{KeyA:"sooc",KeyS:"edit",KeyD:"trash"},
+            zh:{sooc:"直出",edit:"大修",trash:"废片"}, color:{sooc:"var(--sooc)",edit:"var(--edit)",trash:"var(--trash)"}},
+  type:    {label:"类型", order:["scenery","animal","portrait"], keys:{KeyQ:"scenery",KeyW:"animal",KeyE:"portrait"},
+            zh:{scenery:"风景",animal:"动物",portrait:"人像"}, color:{scenery:"var(--scenery)",animal:"var(--animal)",portrait:"var(--portrait)"}},
+  quality: {label:"质量", order:["best","normal"], keys:{KeyZ:"best",KeyX:"normal"},
+            zh:{best:"绝美",normal:"普通"}, color:{best:"var(--best)",normal:"var(--normal)"}},
+};
+const KEY2TAG = {};
+for (const [dim, d] of Object.entries(DIMS))
+  for (const [code, val] of Object.entries(d.keys)) KEY2TAG[code] = {dim, val};
+
+const state = {
+  root: null, home: "", days: [],          // day: {path,name,date,count,photos:[],tags:{}}
+  filt: {status:new Set(), type:new Set(), quality:new Set(), q:"", days:0},
+  flat: [],                                 // 当前筛选后的 [{day, p}]
+  lb: -1, undoStack: [], redoStack: [],
+  prewarmed: new Set(),
+};
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} :
+    {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  if (!r.ok) { let m = "HTTP " + r.status; try { m = (await r.json()).error || m; } catch (e) {} throw new Error(m); }
+  return r.json();
+}
+let toastTimer = null;
+function toast(msg, ms) {
+  const t = $("toast"); t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.opacity = 0, ms || 1500);
+}
+
+/* ---------- 加载 ---------- */
+async function setRoot(path) {
+  try {
+    const r = await api("/api/scan?root=" + enc(path));
+    state.root = r.root;
+    localStorage.setItem("ptg:root", r.root);
+    $("root-name").textContent = r.root.split("/").pop() || r.root;
+    $("root-name").title = r.root;
+    const days = r.days.slice().sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.name.localeCompare(a.name));
+    await Promise.all(days.map(async d => {
+      try { const x = await api("/api/photos?dir=" + enc(d.path)); d.photos = x.photos; d.tags = x.tags || {}; }
+      catch (e) { d.photos = []; d.tags = {}; d.err = e.message; }
+    }));
+    state.days = days;
+    state.prewarmed.clear();
+    render();
+  } catch (e) { toast("⚠️ 扫描失败:" + e.message, 3000); }
+}
+
+/* ---------- 筛选 ---------- */
+function matchDims(t, skipDim) {
+  for (const dim of Object.keys(DIMS)) {
+    if (dim === skipDim) continue;
+    const set = state.filt[dim];
+    if (set.size && !set.has((t && t[dim]) || "none")) return false;
+  }
+  return true;
+}
+function matchPhoto(day, p) {
+  const t = day.tags[p.name];
+  if (!matchDims(t)) return false;
+  if (state.filt.q && !p.name.toLowerCase().includes(state.filt.q)) return false;
+  return true;
+}
+function dayVisible(day) {
+  if (!state.filt.days) return true;
+  if (!day.date) return false;
+  const lim = new Date(Date.now() - state.filt.days * 864e5).toISOString().slice(0, 10);
+  return day.date >= lim;
+}
+function facetCounts(dim) {
+  const c = {none: 0};
+  for (const v of DIMS[dim].order) c[v] = 0;
+  for (const day of state.days) {
+    if (!dayVisible(day)) continue;
+    for (const p of day.photos) {
+      const t = day.tags[p.name];
+      if (!matchDims(t, dim)) continue;
+      if (state.filt.q && !p.name.toLowerCase().includes(state.filt.q)) continue;
+      c[(t && t[dim]) || "none"]++;
+    }
+  }
+  return c;
+}
+
+/* ---------- 渲染 ---------- */
+function renderFilters() {
+  const rows = [];
+  for (const [dim, d] of Object.entries(DIMS)) {
+    const cnt = facetCounts(dim);
+    const chips = [...d.order, "none"].map(v => {
+      const on = state.filt[dim].has(v);
+      const color = v === "none" ? "var(--fg2)" : d.color[v];
+      const label = v === "none" ? "未定" : d.zh[v];
+      return `<span class="fchip${on ? " on" : ""}" style="${on ? "background:" + color : ""}"
+        onclick="toggleFilt('${dim}','${v}')">${label}<small>${cnt[v]}</small></span>`;
+    }).join("");
+    rows.push(`<span class="fgroup"><span class="gl">${d.label}</span>${chips}</span>`);
+  }
+  const dr = [[0, "全部"], [7, "近7天"], [30, "近30天"], [90, "近90天"]].map(([n, l]) =>
+    `<span class="fchip${state.filt.days === n ? " on" : ""}" style="${state.filt.days === n ? "background:var(--acc);color:#fff" : ""}"
+      onclick="setDays(${n})">${l}</span>`).join("");
+  rows.push(`<span class="fgroup"><span class="gl">时间</span>${dr}</span>`);
+  const any = state.filt.status.size || state.filt.type.size || state.filt.quality.size || state.filt.q || state.filt.days;
+  if (any) rows.push(`<span class="fchip" onclick="clearFilt()">✕ 清除筛选</span>`);
+  $("row2").innerHTML = rows.join("");
+}
+function itemHTML(day, p, idx) {
+  const t = day.tags[p.name] || {};
+  const dot = t.status ? `<i class="dot" style="background:${DIMS.status.color[t.status]}"></i>` : "";
+  const star = t.quality === "best" ? `<i class="star">★</i>` : "";
+  const ty = t.type ? `<i class="ty" style="background:${DIMS.type.color[t.type]}">${DIMS.type.zh[t.type]}</i>` : "";
+  return `<div class="it" data-name="${p.name}" onclick="openLB(${idx})">
+    <img loading="lazy" src="/thumb?path=${enc(day.path + "/" + p.name)}&w=480">${dot}${star}${ty}</div>`;
+}
+function render() {
+  renderFilters();
+  state.flat = [];
+  const secs = [];
+  let total = 0;
+  for (const day of state.days) {
+    total += day.photos.length;
+    if (!dayVisible(day)) continue;
+    const items = [];
+    for (const p of day.photos) {
+      if (!matchPhoto(day, p)) continue;
+      items.push(itemHTML(day, p, state.flat.length));
+      state.flat.push({day, p});
+    }
+    if (!items.length) continue;
+    secs.push(`<section class="sec" data-day="${day.path}">
+      <h2>${day.date || day.name} <small>${day.name} · ${items.length}${items.length !== day.photos.length ? " / " + day.photos.length : ""} 张</small>
+      <a href="/tagger?root=${enc(state.root)}&dir=${enc(day.path)}" target="_blank">去打标 ↗</a></h2>
+      <div class="grid">${items.join("")}</div></section>`);
+  }
+  $("tl").innerHTML = secs.join("");
+  $("empty").style.display = state.flat.length ? "none" : "";
+  $("count").textContent = "匹配 " + state.flat.length + " / 共 " + total + " 张";
+  observeSections();
+}
+const io = new IntersectionObserver(es => {
+  for (const e of es) {
+    if (!e.isIntersecting) continue;
+    const path = e.target.dataset.day;
+    if (state.prewarmed.has(path)) continue;
+    state.prewarmed.add(path);
+    api("/api/prewarm", {dir: path, w: 480}).catch(() => {});
+  }
+}, {rootMargin: "800px"});
+function observeSections() {
+  for (const s of document.querySelectorAll(".sec")) io.observe(s);
+}
+
+/* ---------- 筛选交互 ---------- */
+function toggleFilt(dim, v) {
+  const s = state.filt[dim];
+  s.has(v) ? s.delete(v) : s.add(v);
+  render();
+}
+function setDays(n) { state.filt.days = n; render(); }
+function clearFilt() {
+  state.filt = {status:new Set(), type:new Set(), quality:new Set(), q:"", days:0};
+  $("search").value = "";
+  render();
+}
+let searchTimer = null;
+$("search").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.filt.q = $("search").value.trim().toLowerCase(); render(); }, 200);
+});
+
+/* ---------- 灯箱 ---------- */
+function openLB(i) {
+  if (!state.flat.length) return;
+  state.lb = Math.max(0, Math.min(state.flat.length - 1, i));
+  $("lb").classList.remove("hidden");
+  lbShow();
+}
+function lbShow() {
+  const {day, p} = state.flat[state.lb];
+  exitLBZoom();
+  $("lb-img").src = "/img?path=" + enc(day.path + "/" + p.name);
+  $("lb-name").textContent = p.name;
+  $("lb-pos").textContent = (state.lb + 1) + " / " + state.flat.length;
+  $("lb-day").textContent = day.date || day.name;
+  lbChips();
+  for (const k of [1, 2, -1]) {
+    const n = state.flat[state.lb + k];
+    if (n) { const im = new Image(); im.src = "/img?path=" + enc(n.day.path + "/" + n.p.name); }
+  }
+}
+function lbChips() {
+  const {day, p} = state.flat[state.lb];
+  const t = day.tags[p.name] || {};
+  const html = [];
+  for (const [dim, d] of Object.entries(DIMS))
+    if (t[dim]) html.push(`<span class="chip" style="background:${d.color[t[dim]]}">${t[dim] === "best" ? "★ " : ""}${d.zh[t[dim]]}</span>`);
+  $("lb-chips").innerHTML = html.join("");
+}
+function closeLB() { $("lb").classList.add("hidden"); state.lb = -1; }
+function lbNav(d) { if (state.lb + d >= 0 && state.lb + d < state.flat.length) { state.lb += d; lbShow(); } }
+function toggleLBZoom() {
+  const st = $("lb-stage"), im = $("lb-img");
+  if (st.classList.contains("zoomed")) { exitLBZoom(); return; }
+  st.classList.add("zoomed");
+  st.scrollLeft = (im.naturalWidth - st.clientWidth) / 2;
+  st.scrollTop = (im.naturalHeight - st.clientHeight) / 2;
+}
+function exitLBZoom() { $("lb-stage").classList.remove("zoomed"); }
+$("lb-img").addEventListener("click", toggleLBZoom);
+$("lb-open-tagger").addEventListener("click", () => {
+  const {day, p} = state.flat[state.lb];
+  window.open("/tagger?root=" + enc(state.root) + "&dir=" + enc(day.path) + "&file=" + enc(p.name));
+});
+
+/* ---------- 灯箱里打 tag ---------- */
+function lbSetDim(dim, val) {
+  if (state.lb < 0) return;
+  const {day, p} = state.flat[state.lb];
+  const before = {...(day.tags[p.name] || {})};
+  const after = {...before};
+  if (after[dim] === val) delete after[dim]; else after[dim] = val;
+  commitTag(day, p.name, before, after, true);
+}
+function commitTag(day, name, before, after, history) {
+  const clean = {};
+  for (const dim of Object.keys(DIMS)) if (after[dim]) clean[dim] = after[dim];
+  if (history) { state.undoStack.push({day, name, before, after: clean}); state.redoStack.length = 0; }
+  if (Object.keys(clean).length) day.tags[name] = clean; else delete day.tags[name];
+  api("/api/tag", {dir: day.path, file: name, tags: clean})
+    .catch(e => toast("⚠️ 保存失败:" + e.message, 2500));
+  if (state.lb >= 0) lbChips();
+  refreshItem(day, name);
+}
+function refreshItem(day, name) {
+  const sec = document.querySelector(`.sec[data-day="${CSS.escape(day.path)}"]`);
+  if (!sec) return;
+  const it = sec.querySelector(`.it[data-name="${CSS.escape(name)}"]`);
+  if (!it) return;
+  const idx = state.flat.findIndex(x => x.day === day && x.p.name === name);
+  const t = day.tags[name] || {};
+  it.outerHTML = itemHTML(day, {name}, idx);
+}
+function lbUndo(redo) {
+  const stack = redo ? state.redoStack : state.undoStack;
+  const e = stack.pop();
+  if (!e) { toast(redo ? "没有可重做的" : "没有可撤销的"); return; }
+  (redo ? state.undoStack : state.redoStack).push(e);
+  commitTag(e.day, e.name, {}, redo ? e.after : e.before, false);
+  toast((redo ? "重做 ↪ " : "撤销 ↩ ") + e.name);
+}
+
+/* ---------- 导出 ---------- */
+function openExport() {
+  if (!state.flat.length) { toast("当前筛选没有照片"); return; }
+  const size = state.flat.reduce((s, x) => s + (x.p.size || 0), 0);
+  $("ex-summary").textContent = `共 ${state.flat.length} 张,约 ${(size / 1e9).toFixed(2)} GB,来自 ${new Set(state.flat.map(x => x.day.path)).size} 天`;
+  $("ex-dest").value = localStorage.getItem("ptg:dest") || (state.home + "/Pictures/成片");
+  $("ex-bar").style.display = "none"; $("ex-log").textContent = "";
+  $("ex-start").disabled = false;
+  $("modal-export").classList.remove("hidden");
+}
+$("btn-export").addEventListener("click", openExport);
+$("ex-start").addEventListener("click", async () => {
+  const dest = $("ex-dest").value.trim();
+  if (!dest) return;
+  localStorage.setItem("ptg:dest", dest);
+  $("ex-start").disabled = true;
+  $("ex-bar").style.display = "";
+  try {
+    const paths = state.flat.map(x => x.day.path + "/" + x.p.name);
+    const r = await api("/api/export", {paths, dest});
+    const timer = setInterval(async () => {
+      try {
+        const s = await api("/api/export_status?job=" + r.job);
+        $("ex-bar").firstElementChild.style.width = (100 * s.done / Math.max(1, s.total)) + "%";
+        $("ex-log").textContent = `进度 ${s.done}/${s.total} · 复制 ${s.copied} · 跳过 ${s.skipped}` +
+          (s.errors.length ? `\n错误 ${s.errors.length} 条:\n` + s.errors.slice(0, 5).join("\n") : "");
+        if (s.finished) { clearInterval(timer); toast("导出完成 ✓", 2500); $("ex-start").disabled = false; }
+      } catch (e) { clearInterval(timer); $("ex-log").textContent = "⚠️ " + e.message; $("ex-start").disabled = false; }
+    }, 500);
+  } catch (e) { $("ex-log").textContent = "⚠️ " + e.message; $("ex-start").disabled = false; }
+});
+
+/* ---------- 目录浏览 ---------- */
+let browPath = null;
+async function openRootModal() {
+  $("modal-root").classList.remove("hidden");
+  try {
+    const r = await api("/api/roots");
+    $("brow-roots").innerHTML = r.roots.map(x =>
+      `<span class="fchip" onclick="brow('${x.path.replace(/'/g, "\\'")}')">${x.name}</span>`).join("");
+  } catch (e) {}
+  brow(state.root || null);
+}
+async function brow(path) {
+  try {
+    const r = await api("/api/browse" + (path ? "?path=" + enc(path) : ""));
+    browPath = r.path;
+    $("brow-input").value = r.path;
+    $("brow-cur").textContent = "当前:" + r.path + "(" + r.jpg + " JPG)";
+    const items = [];
+    if (r.parent) items.push(`<div class="brow-item" onclick="brow('${r.parent.replace(/'/g, "\\'")}')"><span>⬆︎ 上一级</span><span></span></div>`);
+    for (const d of r.dirs)
+      items.push(`<div class="brow-item" onclick="brow('${d.path.replace(/'/g, "\\'")}')">
+        <span>📁 ${d.name}</span><span class="c">${d.jpg ? d.jpg + " JPG" : ""}</span></div>`);
+    $("brow-list").innerHTML = items.join("") || `<div style="padding:14px;color:var(--fg2)">(没有子文件夹)</div>`;
+  } catch (e) { toast("⚠️ " + e.message, 2500); }
+}
+$("brow-go").addEventListener("click", () => brow($("brow-input").value.trim()));
+$("brow-input").addEventListener("keydown", e => { if (e.key === "Enter") brow($("brow-input").value.trim()); e.stopPropagation(); });
+$("brow-use").addEventListener("click", () => { closeModals(); if (browPath) { toast("加载中…", 60000); setRoot(browPath).then(() => toast("完成 ✓")); } });
+$("btn-root").addEventListener("click", openRootModal);
+function closeModals() { for (const m of document.querySelectorAll(".modal")) m.classList.add("hidden"); }
+function modalOpen() { return !!document.querySelector(".modal:not(.hidden)"); }
+
+/* ---------- 键盘 ---------- */
+addEventListener("keydown", e => {
+  if (e.target instanceof HTMLInputElement) { if (e.key === "Escape") { e.target.blur(); closeModals(); } return; }
+  if (modalOpen()) { if (e.key === "Escape") closeModals(); return; }
+  const lbOn = state.lb >= 0;
+  if (e.metaKey && e.code === "KeyZ") { e.preventDefault(); lbUndo(e.shiftKey); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!lbOn) {
+    if (e.code === "Slash" || e.code === "KeyH") toast("点开任意照片进入灯箱;灯箱内可用打标键位");
+    return;
+  }
+  const zoomed = $("lb-stage").classList.contains("zoomed");
+  const tag = KEY2TAG[e.code];
+  if (tag) { e.preventDefault(); lbSetDim(tag.dim, tag.val); return; }
+  switch (e.code) {
+    case "Space": case "KeyJ": e.preventDefault(); lbNav(1); break;
+    case "KeyK": e.preventDefault(); lbNav(-1); break;
+    case "ArrowRight": e.preventDefault(); zoomed ? $("lb-stage").scrollBy(300, 0) : lbNav(1); break;
+    case "ArrowLeft":  e.preventDefault(); zoomed ? $("lb-stage").scrollBy(-300, 0) : lbNav(-1); break;
+    case "ArrowUp":    if (zoomed) { e.preventDefault(); $("lb-stage").scrollBy(0, -300); } break;
+    case "ArrowDown":  if (zoomed) { e.preventDefault(); $("lb-stage").scrollBy(0, 300); } break;
+    case "KeyU": e.preventDefault(); lbUndo(e.shiftKey); break;
+    case "Period": e.preventDefault(); toggleLBZoom(); break;
+    case "Escape": e.preventDefault(); zoomed ? exitLBZoom() : closeLB(); break;
+  }
+});
+
+/* ---------- 启动 ---------- */
+(async function init() {
+  try { const c = await api("/api/config"); state.home = c.home || ""; if (!localStorage.getItem("ptg:root")) localStorage.setItem("ptg:root", c.root || ""); } catch (e) {}
+  const params = new URLSearchParams(location.search);
+  const root = params.get("root") || localStorage.getItem("ptg:root");
+  if (root) { toast("加载中…", 60000); await setRoot(root); toast("完成 ✓"); }
+  else openRootModal();
+})();
+</script>
+</body>
+</html>

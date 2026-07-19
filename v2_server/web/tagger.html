@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>phototag 打标器</title>
+<style>
+  :root{
+    --bg:#111214; --bg2:#1a1c1f; --bg3:#232529; --fg:#e8e8ea; --fg2:#9a9aa0; --line:#2e3136;
+    --sooc:#30d158; --edit:#0a84ff; --trash:#ff453a; --best:#ffd60a; --normal:#98989d;
+    --scenery:#64d2ff; --animal:#ff9f0a; --portrait:#bf5af2; --acc:#0a84ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif;overflow:hidden}
+  #app{display:flex;height:100vh}
+  button{font:inherit;color:inherit;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+  button:hover{border-color:#4a4e55}
+  /* ---- 侧栏 ---- */
+  #side{width:250px;min-width:250px;background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column}
+  #side-head{padding:12px;border-bottom:1px solid var(--line)}
+  #root-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px}
+  #day-list{flex:1;overflow-y:auto;padding:6px}
+  .day{padding:7px 9px;border-radius:8px;cursor:pointer;margin-bottom:2px}
+  .day:hover{background:var(--bg3)}
+  .day.active{background:#2b3a55}
+  .day .r1{display:flex;justify-content:space-between;gap:8px}
+  .day .nm{font-weight:500}
+  .day .ct{color:var(--fg2);font-variant-numeric:tabular-nums}
+  .day .bar{height:3px;background:#33363c;border-radius:2px;margin-top:5px;overflow:hidden}
+  .day .bar i{display:block;height:100%;background:var(--sooc);width:0}
+  #side-foot{padding:10px 12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  #side-foot a{color:var(--acc);text-decoration:none}
+  /* ---- 主区 ---- */
+  #main{flex:1;display:flex;flex-direction:column;min-width:0}
+  #stage{flex:1;position:relative;overflow:hidden;background:#0a0a0b}
+  #photo{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;user-select:none;-webkit-user-drag:none}
+  #photo.zoomed{position:absolute;inset:auto;max-width:none;max-height:none;left:0;top:0;margin:0}
+  #photo.hidden{display:none}
+  #badges{position:absolute;left:14px;top:12px;display:flex;gap:8px;pointer-events:none}
+  .chip{padding:3px 12px;border-radius:99px;font-weight:600;font-size:15px;color:#000;box-shadow:0 1px 6px rgba(0,0,0,.5)}
+  #zoom-ind{position:absolute;right:14px;top:12px;background:rgba(0,0,0,.6);padding:2px 10px;border-radius:99px;color:#fff;display:none}
+  #spin{position:absolute;right:16px;bottom:14px;width:14px;height:14px;border:2px solid #555;border-top-color:#eee;border-radius:50%;animation:sp 0.8s linear infinite;display:none}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  #empty-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--fg2);flex-direction:column;gap:12px;text-align:center}
+  #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:rgba(20,20,22,.92);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;white-space:nowrap}
+  /* ---- 缩略图条 ---- */
+  #strip{height:96px;background:var(--bg2);border-top:1px solid var(--line);display:flex;gap:4px;overflow-x:auto;padding:6px;scroll-behavior:smooth}
+  #strip.hidden{display:none}
+  .fs{position:relative;height:100%;flex:0 0 auto;cursor:pointer;border-radius:4px;overflow:hidden;outline:2px solid transparent}
+  .fs img{height:100%;width:auto;display:block;min-width:40px;background:#222}
+  .fs.cur{outline-color:#fff}
+  .fs .dot{position:absolute;left:3px;bottom:3px;width:9px;height:9px;border-radius:50%;box-shadow:0 0 3px #000}
+  .fs .star{position:absolute;right:3px;top:1px;color:var(--best);font-size:12px;text-shadow:0 0 3px #000}
+  /* ---- HUD ---- */
+  #hud{display:flex;align-items:center;gap:18px;background:var(--bg2);border-top:1px solid var(--line);padding:8px 14px;flex-wrap:nowrap}
+  #hud-info{min-width:200px}
+  #hud-file{font-weight:600}
+  #hud-pos,#hud-day{color:var(--fg2);margin-left:8px;font-variant-numeric:tabular-nums}
+  #hud-keys{flex:1;display:flex;gap:16px;justify-content:center}
+  .kgroup{display:flex;align-items:center;gap:5px}
+  .kgroup .gl{color:var(--fg2);margin-right:2px}
+  .kcap{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 4px;border:1px solid var(--line);border-radius:6px;color:var(--fg2);cursor:pointer}
+  .kcap b{font:600 11px/1.5 ui-monospace,Menlo,monospace;background:#2c2f34;border-radius:4px;padding:0 5px;color:var(--fg)}
+  .kcap.on{color:#000;font-weight:600}
+  .kcap.on b{background:rgba(0,0,0,.25);color:#000}
+  #hud-right{display:flex;gap:10px;align-items:center;min-width:210px;justify-content:flex-end;color:var(--fg2)}
+  #hud-auto.on{color:var(--sooc)}
+  #hud-save.dirty{color:var(--best)}
+  #hud-save.err{color:var(--trash)}
+  /* ---- 弹窗 ---- */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50}
+  .modal.hidden{display:none}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;width:640px;max-width:92vw;max-height:82vh;display:flex;flex-direction:column;padding:16px}
+  .card h3{margin-bottom:10px}
+  #brow-path{display:flex;gap:8px;margin-bottom:8px}
+  #brow-path input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:5px 9px}
+  #brow-roots{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .rootchip{background:var(--bg3);border:1px solid var(--line);border-radius:99px;padding:2px 11px;cursor:pointer;color:var(--fg2)}
+  .rootchip:hover{color:var(--fg)}
+  #brow-filter{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:5px 9px;margin-bottom:8px}
+  #brow-list{flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:8px;min-height:200px}
+  .brow-item{display:flex;justify-content:space-between;padding:6px 12px;cursor:pointer;border-bottom:1px solid #222428}
+  .brow-item:hover{background:var(--bg3)}
+  .brow-item .n{color:var(--fg)}
+  .brow-item .c{color:var(--fg2);font-variant-numeric:tabular-nums}
+  #brow-foot{display:flex;justify-content:space-between;margin-top:12px;align-items:center}
+  #brow-cur{color:var(--fg2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:340px}
+  .primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  /* 帮助 */
+  #help-grid{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px 14px;align-items:center;margin-top:6px}
+  #help-grid b{font:600 12px/1.6 ui-monospace,Menlo,monospace;background:#2c2f34;border-radius:4px;padding:1px 7px;justify-self:start;white-space:nowrap}
+  #help-grid span{color:var(--fg2)}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div id="side-head">
+      <div id="root-name">—</div>
+      <button id="btn-root">📁 换目录 <b>O</b></button>
+    </div>
+    <div id="day-list"></div>
+    <div id="side-foot">
+      <a href="/gallery" target="_blank">画廊 ↗</a>
+      <span id="side-total" style="color:var(--fg2)"></span>
+    </div>
+  </aside>
+  <main id="main">
+    <div id="stage">
+      <img id="photo" class="hidden" alt="">
+      <div id="empty-hint">
+        <div style="font-size:40px">📷</div>
+        <div>按 <b>O</b> 选择照片根目录(如 /Volumes/ZTSSD/Sony A7V)</div>
+      </div>
+      <div id="badges"></div>
+      <div id="zoom-ind">100%</div>
+      <div id="spin"></div>
+      <div id="toast"></div>
+    </div>
+    <div id="strip" class="hidden"></div>
+    <footer id="hud">
+      <div id="hud-info"><span id="hud-file">—</span><span id="hud-pos"></span><span id="hud-day"></span></div>
+      <div id="hud-keys"></div>
+      <div id="hud-right">
+        <span id="hud-auto" title="打完状态自动下一张 (F)">连进F</span>
+        <span id="hud-save">已保存</span>
+        <button id="btn-help" title="键位帮助">H 帮助</button>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<div id="modal-root" class="modal hidden"><div class="card">
+  <h3>选择照片根目录</h3>
+  <div id="brow-path"><input id="brow-input" spellcheck="false" placeholder="/Volumes/ZTSSD/Sony A7V"><button id="brow-go">跳转</button></div>
+  <div id="brow-roots"></div>
+  <input id="brow-filter" placeholder="过滤子文件夹名…">
+  <div id="brow-list"></div>
+  <div id="brow-foot">
+    <span id="brow-cur"></span>
+    <div style="display:flex;gap:8px"><button id="brow-cancel">取消 (Esc)</button><button id="brow-use" class="primary">✓ 就用这个目录</button></div>
+  </div>
+</div></div>
+
+<div id="modal-help" class="modal hidden"><div class="card" style="width:660px">
+  <h3>键位 <span style="color:var(--fg2);font-weight:400;font-size:13px">左手三排=三个维度,同键再按=取消;右手翻页</span></h3>
+  <div id="help-grid">
+    <b>Q / W / E</b><span>类型:风景 / 动物 / 人像</span> <b>Space → J</b><span>下一张</span>
+    <b>A / S / D</b><span>状态:直出 / 大修 / 废片</span> <b>← K</b><span>上一张</span>
+    <b>Z / X</b><span>质量:绝美 / 普通</span>            <b>U ⌘Z</b><span>撤销(⇧ 重做)</span>
+    <b>⌫</b><span>清空本张全部 tag</span>               <b>N</b><span>下一张未打状态的</span>
+    <b>F</b><span>「打完状态自动下一张」开关</span>       <b>.</b><span>100% ↔ 适应(方向键平移)</span>
+    <b>Tab</b><span>缩略图条</span>                      <b>[ / ]</b><span>上一天 / 下一天</span>
+    <b>O</b><span>换目录</span>                          <b>H / ?</b><span>本帮助</span>
+  </div>
+  <div style="margin-top:14px;text-align:right"><button onclick="closeModals()">关闭 (Esc)</button></div>
+</div></div>
+
+<script>
+"use strict";
+/* ---------- 常量 ---------- */
+const DIMS = {
+  type:    {label:"类型", order:["scenery","animal","portrait"],
+            keys:{KeyQ:"scenery", KeyW:"animal", KeyE:"portrait"},
+            zh:{scenery:"风景", animal:"动物", portrait:"人像"},
+            color:{scenery:"var(--scenery)", animal:"var(--animal)", portrait:"var(--portrait)"}},
+  status:  {label:"状态", order:["sooc","edit","trash"],
+            keys:{KeyA:"sooc", KeyS:"edit", KeyD:"trash"},
+            zh:{sooc:"直出", edit:"大修", trash:"废片"},
+            color:{sooc:"var(--sooc)", edit:"var(--edit)", trash:"var(--trash)"}},
+  quality: {label:"质量", order:["best","normal"],
+            keys:{KeyZ:"best", KeyX:"normal"},
+            zh:{best:"绝美", normal:"普通"},
+            color:{best:"var(--best)", normal:"var(--normal)"}},
+};
+const KEY2TAG = {};   // code -> {dim, val}
+for (const [dim, d] of Object.entries(DIMS))
+  for (const [code, val] of Object.entries(d.keys)) KEY2TAG[code] = {dim, val};
+const KEYCAP = {KeyQ:"Q",KeyW:"W",KeyE:"E",KeyA:"A",KeyS:"S",KeyD:"D",KeyZ:"Z",KeyX:"X"};
+
+/* ---------- 状态 ---------- */
+const state = {
+  root: null, days: [], dayIdx: -1,
+  photos: [], tags: {}, cur: -1,
+  zoom: false, panX: 0, panY: 0,
+  auto: localStorage.getItem("pt2:auto") !== "0",
+  undoStack: [], redoStack: [],
+  stripOn: false, stripDay: null,
+};
+const pending = new Map();   // dir\0name -> tags
+let flushTimer = null, retryTimer = null, saveErr = false;
+const $ = id => document.getElementById(id);
+const photoEl = $("photo");
+
+/* ---------- 工具 ---------- */
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} :
+    {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  if (!r.ok) {
+    let m = "HTTP " + r.status;
+    try { m = (await r.json()).error || m; } catch (e) {}
+    throw new Error(m);
+  }
+  return r.json();
+}
+const enc = encodeURIComponent;
+const imgURL   = (dir, name) => "/img?path="  + enc(dir + "/" + name);
+const thumbURL = (dir, name, w) => "/thumb?path=" + enc(dir + "/" + name) + "&w=" + (w||240);
+let toastTimer = null;
+function toast(msg, ms) {
+  const t = $("toast");
+  t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.style.opacity = 0, ms || 1300);
+}
+const curPhoto = () => state.photos[state.cur] || null;
+const curDay   = () => state.days[state.dayIdx] || null;
+
+/* ---------- 写入队列(防抖 + 失败重试 + 关页兜底) ---------- */
+function queueWrite(dir, name, tags) {
+  pending.set(dir + "\u0000" + name, {dir, name, tags});
+  renderSave();
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, 250);
+}
+async function flush() {
+  if (!pending.size) return;
+  const groups = {};
+  const snap = new Map(pending);
+  for (const [k, v] of snap) (groups[v.dir] = groups[v.dir] || {})[v.name] = v.tags;
+  for (const [dir, updates] of Object.entries(groups)) {
+    try {
+      await api("/api/tags", {dir, updates});
+      for (const [k, v] of snap) if (v.dir === dir && pending.get(k) === v) pending.delete(k);
+      saveErr = false;
+    } catch (e) {
+      saveErr = true;
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(flush, 3000);
+    }
+  }
+  renderSave();
+}
+addEventListener("pagehide", () => {
+  const groups = {};
+  for (const v of pending.values()) (groups[v.dir] = groups[v.dir] || {})[v.name] = v.tags;
+  for (const [dir, updates] of Object.entries(groups))
+    navigator.sendBeacon("/api/tags", new Blob([JSON.stringify({dir, updates})], {type:"application/json"}));
+});
+function renderSave() {
+  const el = $("hud-save");
+  if (saveErr)            { el.textContent = "保存失败,重试中"; el.className = "err"; }
+  else if (pending.size)  { el.textContent = "保存中…";          el.className = "dirty"; }
+  else                    { el.textContent = "已保存";           el.className = ""; }
+}
+
+/* ---------- tag 变更 / 撤销 ---------- */
+function normTags(t) {
+  const o = {};
+  for (const dim of Object.keys(DIMS)) if (t && t[dim]) o[dim] = t[dim];
+  return o;
+}
+function tagsEqual(a, b) { return JSON.stringify(normTags(a)) === JSON.stringify(normTags(b)); }
+function commit(dayPath, name, before, after, opts) {
+  after = normTags(after);
+  if (tagsEqual(before, after)) return;
+  if (!(opts && opts.noHistory)) {
+    state.undoStack.push({dayPath, name, before: normTags(before), after});
+    if (state.undoStack.length > 800) state.undoStack.shift();
+    state.redoStack.length = 0;
+  }
+  if (curDay() && curDay().path === dayPath) {
+    if (Object.keys(after).length) state.tags[name] = {...after};
+    else delete state.tags[name];
+    renderTagUI();
+    updateDayCounts();
+  }
+  queueWrite(dayPath, name, after);
+}
+function setDim(dim, val) {
+  const p = curPhoto(); if (!p) return;
+  const before = state.tags[p.name] || {};
+  const after = {...normTags(before)};
+  const wasSet = after[dim] === val;
+  if (wasSet) delete after[dim]; else after[dim] = val;
+  commit(curDay().path, p.name, before, after);
+  if (!wasSet && dim === "status" && state.auto)
+    setTimeout(() => { if (state.cur < state.photos.length - 1) go(state.cur + 1); }, 120);
+}
+function clearCur() {
+  const p = curPhoto(); if (!p) return;
+  const before = state.tags[p.name] || {};
+  if (!Object.keys(normTags(before)).length) { toast("本来就没有 tag"); return; }
+  commit(curDay().path, p.name, before, {});
+  toast("已清空 tag");
+}
+async function applyHistory(entry, tags) {
+  const day = state.days.find(d => d.path === entry.dayPath);
+  if (curDay() && curDay().path !== entry.dayPath && day) {
+    await loadDay(state.days.indexOf(day), {file: entry.name});
+  }
+  commit(entry.dayPath, entry.name, state.tags[entry.name] || {}, tags, {noHistory: true});
+  const i = state.photos.findIndex(p => p.name === entry.name);
+  if (i >= 0) go(i, {keepZoom: true});
+  renderTagUI();
+}
+async function undo() {
+  const e = state.undoStack.pop();
+  if (!e) { toast("没有可撤销的操作"); return; }
+  state.redoStack.push(e);
+  await applyHistory(e, e.before);
+  toast("撤销 ↩ " + e.name);
+}
+async function redo() {
+  const e = state.redoStack.pop();
+  if (!e) { toast("没有可重做的操作"); return; }
+  state.undoStack.push(e);
+  await applyHistory(e, e.after);
+  toast("重做 ↪ " + e.name);
+}
+
+/* ---------- 展示 ---------- */
+function renderTagUI() { renderBadges(); renderHudKeys(); renderStripDot(); }
+function renderBadges() {
+  const p = curPhoto();
+  const t = (p && state.tags[p.name]) || {};
+  const html = [];
+  for (const [dim, d] of Object.entries(DIMS)) {
+    const v = t[dim];
+    if (v) html.push(`<span class="chip" style="background:${d.color[v]}">${v === "best" ? "★ " : ""}${d.zh[v]}</span>`);
+  }
+  $("badges").innerHTML = html.join("");
+}
+function renderHudKeys() {
+  const p = curPhoto();
+  const t = (p && state.tags[p.name]) || {};
+  const html = [];
+  for (const [dim, d] of Object.entries(DIMS)) {
+    const caps = Object.entries(d.keys).map(([code, val]) => {
+      const on = t[dim] === val;
+      return `<span class="kcap${on ? " on" : ""}" style="${on ? "background:" + d.color[val] + ";border-color:transparent" : ""}"
+        onclick="setDim('${dim}','${val}')"><b>${KEYCAP[code]}</b>${d.zh[val]}</span>`;
+    }).join("");
+    html.push(`<span class="kgroup"><span class="gl">${d.label}</span>${caps}</span>`);
+  }
+  $("hud-keys").innerHTML = html.join("");
+}
+function renderHudInfo() {
+  const p = curPhoto(), d = curDay();
+  $("hud-file").textContent = p ? p.name : "—";
+  $("hud-pos").textContent = p ? (state.cur + 1) + " / " + state.photos.length : "";
+  $("hud-day").textContent = d ? d.name : "";
+  document.title = (p ? p.name + " — " : "") + "phototag 打标器";
+}
+function renderAuto() { const el = $("hud-auto"); el.classList.toggle("on", state.auto); el.textContent = "连进F" + (state.auto ? "·开" : "·关"); }
+
+function statusDotColor(name) {
+  const t = state.tags[name];
+  if (!t || !t.status) return null;
+  return getComputedStyle(document.documentElement).getPropertyValue("--" + t.status);
+}
+function renderStrip() {
+  const d = curDay();
+  if (!state.stripOn || !d) return;
+  if (state.stripDay !== d.path) {
+    state.stripDay = d.path;
+    $("strip").innerHTML = state.photos.map((p, i) =>
+      `<div class="fs" data-i="${i}" onclick="go(${i})"><img loading="lazy" src="${thumbURL(d.path, p.name, 240)}"><i class="dot"></i><i class="star"></i></div>`).join("");
+    api("/api/prewarm", {dir: d.path, w: 240}).catch(() => {});
+    for (const el of $("strip").children) refreshStripItem(el);
+  }
+  highlightStrip();
+}
+function refreshStripItem(el) {
+  const p = state.photos[+el.dataset.i]; if (!p) return;
+  const t = state.tags[p.name] || {};
+  const dot = el.querySelector(".dot");
+  const c = t.status ? DIMS.status.color[t.status] : null;
+  dot.style.background = c || "transparent";
+  dot.style.boxShadow = c ? "0 0 3px #000" : "none";
+  el.querySelector(".star").textContent = t.quality === "best" ? "★" : "";
+}
+function renderStripDot() {
+  if (!state.stripOn) return;
+  const el = $("strip").querySelector(`.fs[data-i="${state.cur}"]`);
+  if (el) refreshStripItem(el);
+}
+function highlightStrip() {
+  if (!state.stripOn) return;
+  for (const el of $("strip").querySelectorAll(".fs.cur")) el.classList.remove("cur");
+  const el = $("strip").querySelector(`.fs[data-i="${state.cur}"]`);
+  if (el) { el.classList.add("cur"); el.scrollIntoView({block:"nearest", inline:"center"}); }
+}
+function toggleStrip() {
+  state.stripOn = !state.stripOn;
+  $("strip").classList.toggle("hidden", !state.stripOn);
+  if (state.stripOn) renderStrip();
+}
+
+function renderDayList() {
+  const list = [...state.days].reverse();
+  $("day-list").innerHTML = list.map(d => {
+    const i = state.days.indexOf(d);
+    const pct = d.count ? Math.round(100 * d.tagged / d.count) : 0;
+    return `<div class="day${i === state.dayIdx ? " active" : ""}" data-i="${i}" onclick="loadDay(${i})">
+      <div class="r1"><span class="nm">${d.name}</span><span class="ct">${d.tagged}/${d.count}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div></div>`;
+  }).join("");
+  const tot = state.days.reduce((s, d) => s + d.count, 0);
+  $("side-total").textContent = state.days.length + " 天 · " + tot + " 张";
+}
+function updateDayCounts() {
+  const d = curDay(); if (!d) return;
+  let tagged = 0;
+  for (const p of state.photos) {
+    const t = state.tags[p.name];
+    if (t && (t.status || t.type || t.quality)) tagged++;
+  }
+  d.tagged = tagged;
+  const el = $("day-list").querySelector(`.day[data-i="${state.dayIdx}"]`);
+  if (el) {
+    el.querySelector(".ct").textContent = tagged + "/" + d.count;
+    el.querySelector(".bar i").style.width = (d.count ? Math.round(100 * tagged / d.count) : 0) + "%";
+  }
+}
+
+/* ---------- 照片显示 / 缩放 / 预取 ---------- */
+const prefetched = new Map();   // url -> Image, 简单 LRU
+function prefetch(i) {
+  const p = state.photos[i], d = curDay();
+  if (!p || !d) return;
+  const url = imgURL(d.path, p.name);
+  if (prefetched.has(url)) return;
+  const im = new Image(); im.src = url;
+  prefetched.set(url, im);
+  if (prefetched.size > 8) prefetched.delete(prefetched.keys().next().value);
+}
+function go(i, opts) {
+  if (!state.photos.length) return;
+  i = Math.max(0, Math.min(state.photos.length - 1, i));
+  state.cur = i;
+  const d = curDay(), p = curPhoto();
+  if (!(opts && opts.keepZoom)) exitZoom();
+  $("empty-hint").style.display = "none";
+  photoEl.classList.remove("hidden");
+  $("spin").style.display = "block";
+  photoEl.src = imgURL(d.path, p.name);
+  prefetch(i + 1); prefetch(i + 2); prefetch(i - 1);
+  renderHudInfo(); renderBadges(); renderHudKeys(); highlightStrip();
+  localStorage.setItem("pt2:pos:" + d.path, i);
+}
+photoEl.addEventListener("load", () => { $("spin").style.display = "none"; if (state.zoom) layoutZoom(true); });
+photoEl.addEventListener("error", () => { $("spin").style.display = "none"; if (photoEl.src) toast("⚠️ 图片加载失败"); });
+function stageSize() { const r = $("stage").getBoundingClientRect(); return [r.width, r.height]; }
+function clampPan() {
+  const [sw, sh] = stageSize(), nw = photoEl.naturalWidth, nh = photoEl.naturalHeight;
+  state.panX = nw <= sw ? (sw - nw) / 2 : Math.min(0, Math.max(sw - nw, state.panX));
+  state.panY = nh <= sh ? (sh - nh) / 2 : Math.min(0, Math.max(sh - nh, state.panY));
+  photoEl.style.transform = `translate(${state.panX}px, ${state.panY}px)`;
+}
+function layoutZoom(center) {
+  const [sw, sh] = stageSize();
+  if (center) { state.panX = (sw - photoEl.naturalWidth) / 2; state.panY = (sh - photoEl.naturalHeight) / 2; }
+  photoEl.classList.add("zoomed");
+  clampPan();
+  $("zoom-ind").style.display = "block";
+}
+function exitZoom() {
+  state.zoom = false;
+  photoEl.classList.remove("zoomed");
+  photoEl.style.transform = "";
+  $("zoom-ind").style.display = "none";
+}
+function toggleZoom() {
+  if (!curPhoto()) return;
+  if (state.zoom) exitZoom();
+  else if (photoEl.naturalWidth) { state.zoom = true; layoutZoom(true); }
+}
+function pan(dx, dy) { state.panX += dx; state.panY += dy; clampPan(); }
+
+/* ---------- 数据加载 ---------- */
+async function loadDay(idx, opts) {
+  if (idx < 0 || idx >= state.days.length) return;
+  state.dayIdx = idx;
+  const d = state.days[idx];
+  try {
+    const r = await api("/api/photos?dir=" + enc(d.path));
+    state.photos = r.photos; state.tags = r.tags || {};
+  } catch (e) { toast("⚠️ " + e.message, 2500); return; }
+  d.count = state.photos.length;
+  prefetched.clear();
+  state.stripDay = null;
+  renderDayList(); updateDayCounts(); renderStrip();
+  localStorage.setItem("pt2:lastday", d.path);
+  if (!state.photos.length) {
+    state.cur = -1; photoEl.classList.add("hidden"); photoEl.removeAttribute("src");
+    $("empty-hint").style.display = "flex"; renderHudInfo(); renderBadges(); renderHudKeys();
+    return;
+  }
+  let i = 0;
+  if (opts && opts.file) i = Math.max(0, state.photos.findIndex(p => p.name === opts.file));
+  else i = Math.min(+localStorage.getItem("pt2:pos:" + d.path) || 0, state.photos.length - 1);
+  go(i);
+}
+function dayNav(delta) {
+  const i = state.dayIdx + delta;
+  if (i < 0) { toast("已经是最早一天"); return; }
+  if (i >= state.days.length) { toast("已经是最新一天"); return; }
+  loadDay(i);
+}
+function nextUntagged() {
+  const n = state.photos.length; if (!n) return;
+  for (let k = 1; k <= n; k++) {
+    const i = (state.cur + k) % n;
+    const t = state.tags[state.photos[i].name];
+    if (!t || !t.status) { go(i); if (i <= state.cur) toast("已从头循环"); return; }
+  }
+  toast("本日「状态」已全部打完 ✓");
+}
+async function setRoot(path, opts) {
+  try {
+    const r = await api("/api/scan?root=" + enc(path));
+    state.root = r.root; state.days = r.days;
+    localStorage.setItem("pt2:root", r.root);
+    $("root-name").textContent = r.root.split("/").pop() || r.root;
+    $("root-name").title = r.root;
+    renderDayList();
+    if (!r.days.length) {
+      toast("该目录下没有含 JPG 的文件夹", 2600);
+      state.dayIdx = -1; state.photos = []; state.cur = -1;
+      photoEl.classList.add("hidden"); $("empty-hint").style.display = "flex";
+      renderHudInfo(); return;
+    }
+    let idx = r.days.length - 1;
+    if (opts && opts.dir) { const j = r.days.findIndex(d => d.path === opts.dir); if (j >= 0) idx = j; }
+    else { const last = localStorage.getItem("pt2:lastday"); const j = r.days.findIndex(d => d.path === last); if (j >= 0) idx = j; }
+    await loadDay(idx, opts);
+  } catch (e) { toast("⚠️ 扫描失败:" + e.message, 3000); }
+}
+
+/* ---------- 目录浏览弹窗 ---------- */
+let browPath = null;
+async function openRootModal() {
+  $("modal-root").classList.remove("hidden");
+  $("brow-filter").value = "";
+  try {
+    const r = await api("/api/roots");
+    $("brow-roots").innerHTML = r.roots.map(x =>
+      `<span class="rootchip" onclick="brow('${x.path.replace(/'/g, "\\'")}')">${x.name}</span>`).join("");
+  } catch (e) {}
+  brow(state.root || null);
+}
+async function brow(path) {
+  try {
+    const r = await api("/api/browse" + (path ? "?path=" + enc(path) : ""));
+    browPath = r.path;
+    $("brow-input").value = r.path;
+    $("brow-cur").textContent = "当前:" + r.path + "(直接含 " + r.jpg + " 张 JPG)";
+    const items = [];
+    if (r.parent) items.push(`<div class="brow-item" onclick="brow('${r.parent.replace(/'/g, "\\'")}')"><span class="n">⬆︎ 上一级</span><span class="c"></span></div>`);
+    for (const d of r.dirs)
+      items.push(`<div class="brow-item" data-name="${d.name.toLowerCase()}" onclick="brow('${d.path.replace(/'/g, "\\'")}')">
+        <span class="n">📁 ${d.name}</span><span class="c">${d.jpg ? d.jpg + " JPG" : ""}</span></div>`);
+    $("brow-list").innerHTML = items.join("") || `<div style="padding:14px;color:var(--fg2)">(没有子文件夹)</div>`;
+    applyBrowFilter();
+  } catch (e) { toast("⚠️ " + e.message, 2500); }
+}
+function applyBrowFilter() {
+  const f = $("brow-filter").value.trim().toLowerCase();
+  for (const el of $("brow-list").querySelectorAll(".brow-item[data-name]"))
+    el.style.display = !f || el.dataset.name.includes(f) ? "" : "none";
+}
+$("brow-filter").addEventListener("input", applyBrowFilter);
+$("brow-go").addEventListener("click", () => brow($("brow-input").value.trim()));
+$("brow-input").addEventListener("keydown", e => { if (e.key === "Enter") brow($("brow-input").value.trim()); e.stopPropagation(); });
+$("brow-use").addEventListener("click", () => { closeModals(); if (browPath) setRoot(browPath); });
+$("brow-cancel").addEventListener("click", closeModals);
+$("btn-root").addEventListener("click", openRootModal);
+$("btn-help").addEventListener("click", () => $("modal-help").classList.toggle("hidden"));
+function closeModals() { for (const m of document.querySelectorAll(".modal")) m.classList.add("hidden"); }
+function modalOpen() { return !!document.querySelector(".modal:not(.hidden)"); }
+
+/* ---------- 键盘 ---------- */
+addEventListener("keydown", e => {
+  if (e.target instanceof HTMLInputElement) { if (e.key === "Escape") { e.target.blur(); closeModals(); } return; }
+  if (modalOpen()) { if (e.key === "Escape") closeModals(); return; }
+  if (e.metaKey && e.code === "KeyZ") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = KEY2TAG[e.code];
+  if (tag) { e.preventDefault(); setDim(tag.dim, tag.val); return; }
+  switch (e.code) {
+    case "Space": case "KeyJ": e.preventDefault(); go(state.cur + 1); break;
+    case "KeyK": e.preventDefault(); go(state.cur - 1); break;
+    case "ArrowRight": e.preventDefault(); state.zoom ? pan(-300, 0) : go(state.cur + 1); break;
+    case "ArrowLeft":  e.preventDefault(); state.zoom ? pan(300, 0)  : go(state.cur - 1); break;
+    case "ArrowUp":    if (state.zoom) { e.preventDefault(); pan(0, 300); } break;
+    case "ArrowDown":  if (state.zoom) { e.preventDefault(); pan(0, -300); } break;
+    case "KeyU": e.preventDefault(); e.shiftKey ? redo() : undo(); break;
+    case "Backspace": e.preventDefault(); clearCur(); break;
+    case "KeyF": e.preventDefault(); state.auto = !state.auto;
+      localStorage.setItem("pt2:auto", state.auto ? "1" : "0"); renderAuto();
+      toast("自动下一张:" + (state.auto ? "开" : "关")); break;
+    case "KeyN": e.preventDefault(); nextUntagged(); break;
+    case "Period": e.preventDefault(); toggleZoom(); break;
+    case "Tab": e.preventDefault(); toggleStrip(); break;
+    case "BracketLeft":  e.preventDefault(); dayNav(-1); break;
+    case "BracketRight": e.preventDefault(); dayNav(1); break;
+    case "KeyH": case "Slash": e.preventDefault(); $("modal-help").classList.toggle("hidden"); break;
+    case "KeyO": e.preventDefault(); openRootModal(); break;
+    case "Escape": e.preventDefault(); if (state.zoom) exitZoom(); break;
+  }
+});
+addEventListener("resize", () => { if (state.zoom) clampPan(); });
+photoEl.addEventListener("click", () => toggleZoom());
+
+/* ---------- 启动 ---------- */
+(async function init() {
+  renderAuto(); renderHudKeys(); renderSave();
+  const params = new URLSearchParams(location.search);
+  let root = params.get("root") || localStorage.getItem("pt2:root");
+  if (!root) { try { root = (await api("/api/config")).root; } catch (e) {} }
+  if (root) await setRoot(root, {dir: params.get("dir"), file: params.get("file")});
+  setInterval(flush, 5000);
+})();
+</script>
+</body>
+</html>
