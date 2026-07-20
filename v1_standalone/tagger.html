@@ -48,6 +48,7 @@
   .gi.now{outline-color:var(--acc)}
   .gi.sel{outline-color:#fff}
   .gi .dot{width:9px;height:9px;border-radius:50%;background:transparent;flex:0 0 auto}
+  .gi .ty{font-size:10px;padding:0 6px;border-radius:99px;color:#000;font-weight:600}
   .gi .star{position:absolute;right:4px;top:2px;color:var(--best);font-size:11px}
   #strip{height:74px;background:var(--bg2);border-top:1px solid var(--line);display:flex;gap:4px;overflow-x:auto;padding:6px;scroll-behavior:smooth}
   #strip.hidden{display:none}
@@ -636,7 +637,7 @@ function buildGrid() {
   if (gridDay === d.name) { refreshGridDots(); markGridNow(); return; }
   gridDay = d.name;
   $("grid-body").innerHTML = state.photos.map((n, i) =>
-    `<div class="gi" data-i="${i}" onclick="gridJump(${i})" title="${n}"><i class="dot"></i><span>${n.replace(/\.(jpe?g)$/i, "")}</span><i class="star"></i></div>`).join("");
+    `<div class="gi" data-i="${i}" onclick="gridJump(${i})" title="${n}"><i class="dot"></i><span>${n.replace(/\.(jpe?g)$/i, "")}</span><i class="ty"></i><i class="star"></i></div>`).join("");
   refreshGridDots(); markGridNow();
 }
 function refreshGridItem(el) {
@@ -644,6 +645,9 @@ function refreshGridItem(el) {
   const t = state.tags[n] || {};
   el.querySelector(".dot").style.background = t.status ? `var(--${t.status})` : "transparent";
   el.querySelector(".star").textContent = t.quality === "best" ? "★" : "";
+  const ty = el.querySelector(".ty");
+  if (t.type) { ty.textContent = DIMS.type.zh[t.type]; ty.style.background = DIMS.type.color[t.type]; ty.style.display = ""; }
+  else ty.style.display = "none";
 }
 function refreshGridDots() { for (const el of $("grid-body").children) refreshGridItem(el); }
 function renderGridDot() {

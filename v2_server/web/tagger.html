@@ -72,14 +72,15 @@
   #grid{position:absolute;inset:0;background:rgba(10,10,11,.98);z-index:20;display:flex;flex-direction:column}
   #grid.hidden{display:none}
   #grid-head{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;color:var(--fg2);border-bottom:1px solid var(--line);font-size:13px}
-  #grid-body{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;align-content:start}
+  #grid-body{flex:1;overflow-y:auto;padding:10px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:6px;align-content:start}
   .gi{position:relative;aspect-ratio:3/2;background:#1b1d20;border-radius:6px;overflow:hidden;cursor:pointer;outline:2px solid transparent;outline-offset:-2px}
   .gi img{width:100%;height:100%;object-fit:cover;display:block}
   .gi.now{outline-color:var(--acc)}
   .gi.sel{outline-color:#fff}
-  .gi .dot{position:absolute;left:6px;bottom:16px;width:10px;height:10px;border-radius:50%;box-shadow:0 0 4px #000}
-  .gi .star{position:absolute;right:5px;top:2px;color:var(--best);font-size:14px;text-shadow:0 0 4px #000}
-  .gi .nm{position:absolute;left:0;right:0;bottom:0;font-size:10px;background:rgba(0,0,0,.45);padding:0 5px;color:#bbb;white-space:nowrap;overflow:hidden}
+  .gi .dot{position:absolute;left:6px;bottom:6px;width:10px;height:10px;border-radius:50%;box-shadow:0 0 4px #000}
+  .gi .star{position:absolute;right:6px;top:3px;color:var(--best);font-size:15px;text-shadow:0 0 4px #000}
+  .gi .ty{position:absolute;left:6px;top:5px;font-size:11px;padding:0 7px;border-radius:99px;color:#000;font-weight:600}
+  .gi:hover::after{content:attr(data-name);position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);font-size:11px;padding:1px 6px;color:#ddd}
   /* ---- 弹窗 ---- */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50}
   .modal.hidden{display:none}
@@ -427,7 +428,7 @@ function toggleGrid(force) {
   buildGrid();
   state.gridSel = state.cur >= 0 ? state.cur : 0;
   renderGridSel(true);
-  api("/api/prewarm", {dir: curDay().path, w: 240}).catch(() => {});
+  api("/api/prewarm", {dir: curDay().path, w: 480}).catch(() => {});   // 与画廊共用同规格缓存
 }
 function buildGrid() {
   const d = curDay();
@@ -435,8 +436,8 @@ function buildGrid() {
   if (gridDay === d.path) { refreshGridDots(); markGridNow(); return; }
   gridDay = d.path;
   $("grid-body").innerHTML = state.photos.map((p, i) =>
-    `<div class="gi" data-i="${i}" onclick="gridJump(${i})" title="${p.name}">
-      <img loading="lazy" src="${thumbURL(d.path, p.name, 240)}"><i class="dot"></i><i class="star"></i><span class="nm">${p.name.replace(/\.(jpe?g)$/i, "")}</span></div>`).join("");
+    `<div class="gi" data-i="${i}" data-name="${p.name}" onclick="gridJump(${i})">
+      <img loading="lazy" src="${thumbURL(d.path, p.name, 480)}"><i class="dot"></i><i class="star"></i><i class="ty"></i></div>`).join("");
   refreshGridDots(); markGridNow();
 }
 function refreshGridItem(el) {
@@ -447,6 +448,9 @@ function refreshGridItem(el) {
   dot.style.background = c || "transparent";
   dot.style.boxShadow = c ? "0 0 4px #000" : "none";
   el.querySelector(".star").textContent = t.quality === "best" ? "★" : "";
+  const ty = el.querySelector(".ty");
+  if (t.type) { ty.textContent = DIMS.type.zh[t.type]; ty.style.background = DIMS.type.color[t.type]; ty.style.display = ""; }
+  else ty.style.display = "none";
 }
 function refreshGridDots() { for (const el of $("grid-body").children) refreshGridItem(el); }
 function renderGridDot() {
