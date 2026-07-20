@@ -73,8 +73,8 @@
   #grid.hidden{display:none}
   #grid-head{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;color:var(--fg2);border-bottom:1px solid var(--line);font-size:13px}
   #grid-body{flex:1;overflow-y:auto;padding:10px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:6px;align-content:start}
-  .gi{position:relative;aspect-ratio:3/2;background:#1b1d20;border-radius:6px;overflow:hidden;cursor:pointer;outline:2px solid transparent;outline-offset:-2px}
-  .gi img{width:100%;height:100%;object-fit:cover;display:block}
+  .gi{position:relative;padding-top:66.67%;background:#1b1d20;border-radius:6px;overflow:hidden;cursor:pointer;outline:2px solid transparent;outline-offset:-2px}
+  .gi img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
   .gi.now{outline-color:var(--acc)}
   .gi.sel{outline-color:#fff}
   .gi .dot{position:absolute;left:6px;bottom:6px;width:10px;height:10px;border-radius:50%;box-shadow:0 0 4px #000}
@@ -768,6 +768,7 @@ photoEl.addEventListener("click", e => { if (dragMoved) { dragMoved = false; ret
   let root = params.get("root") || localStorage.getItem("pt2:root");
   if (!root) { try { root = (await api("/api/config")).root; } catch (e) {} }
   if (root) await setRoot(root, {dir: params.get("dir"), file: params.get("file")});
+  if (params.get("grid")) toggleGrid(true);
   setInterval(flush, 5000);
 })();
 </script>
