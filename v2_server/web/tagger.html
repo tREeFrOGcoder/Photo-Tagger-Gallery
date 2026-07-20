@@ -43,7 +43,7 @@
   #spin{position:absolute;right:16px;bottom:14px;width:14px;height:14px;border:2px solid #555;border-top-color:#eee;border-radius:50%;animation:sp 0.8s linear infinite;display:none}
   @keyframes sp{to{transform:rotate(360deg)}}
   #empty-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--fg2);flex-direction:column;gap:12px;text-align:center}
-  #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:rgba(20,20,22,.92);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;white-space:nowrap}
+  #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:rgba(20,20,22,.92);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;white-space:nowrap;z-index:30}
   /* ---- 缩略图条 ---- */
   #strip{height:96px;background:var(--bg2);border-top:1px solid var(--line);display:flex;gap:4px;overflow-x:auto;padding:6px;scroll-behavior:smooth}
   #strip.hidden{display:none}
@@ -68,6 +68,18 @@
   #hud-auto.on{color:var(--sooc)}
   #hud-save.dirty{color:var(--best)}
   #hud-save.err{color:var(--trash)}
+  /* ---- 总览网格 ---- */
+  #grid{position:absolute;inset:0;background:rgba(10,10,11,.98);z-index:20;display:flex;flex-direction:column}
+  #grid.hidden{display:none}
+  #grid-head{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;color:var(--fg2);border-bottom:1px solid var(--line);font-size:13px}
+  #grid-body{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;align-content:start}
+  .gi{position:relative;aspect-ratio:3/2;background:#1b1d20;border-radius:6px;overflow:hidden;cursor:pointer;outline:2px solid transparent;outline-offset:-2px}
+  .gi img{width:100%;height:100%;object-fit:cover;display:block}
+  .gi.now{outline-color:var(--acc)}
+  .gi.sel{outline-color:#fff}
+  .gi .dot{position:absolute;left:6px;bottom:16px;width:10px;height:10px;border-radius:50%;box-shadow:0 0 4px #000}
+  .gi .star{position:absolute;right:5px;top:2px;color:var(--best);font-size:14px;text-shadow:0 0 4px #000}
+  .gi .nm{position:absolute;left:0;right:0;bottom:0;font-size:10px;background:rgba(0,0,0,.45);padding:0 5px;color:#bbb;white-space:nowrap;overflow:hidden}
   /* ---- 弹窗 ---- */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50}
   .modal.hidden{display:none}
@@ -116,6 +128,10 @@
       <div id="badges"></div>
       <div id="zoom-ind">100%</div>
       <div id="spin"></div>
+      <div id="grid" class="hidden">
+        <div id="grid-head"><span id="grid-title">总览</span><span>方向键选择 · Enter 跳转 · N 选未打 · Esc / G 关闭</span></div>
+        <div id="grid-body"></div>
+      </div>
       <div id="toast"></div>
     </div>
     <div id="strip" class="hidden"></div>
@@ -151,8 +167,9 @@
     <b>Z / X</b><span>质量:绝美 / 普通</span>            <b>U ⌘Z</b><span>撤销(⇧ 重做)</span>
     <b>⌫</b><span>清空本张全部 tag</span>               <b>N</b><span>下一张未打状态的</span>
     <b>F</b><span>「打完状态自动下一张」开关</span>       <b>.</b><span>100% ↔ 适应;触控板捏合变倍,滚动/拖拽/方向键平移</span>
-    <b>Tab</b><span>缩略图条</span>                      <b>[ / ]</b><span>上一天 / 下一天</span>
-    <b>O</b><span>换目录</span>                          <b>H / ?</b><span>本帮助</span>
+    <b>Tab</b><span>缩略图条</span>                      <b>G</b><span>整面总览网格(点选/Enter 跳转)</span>
+    <b>[ / ]</b><span>上一天 / 下一天</span>             <b>O</b><span>换目录</span>
+    <b>H / ?</b><span>本帮助</span>                      <b>Esc</b><span>退出缩放/总览</span>
   </div>
   <div style="margin-top:14px;text-align:right"><button onclick="closeModals()">关闭 (Esc)</button></div>
 </div></div>
@@ -187,6 +204,7 @@ const state = {
   auto: localStorage.getItem("pt2:auto") !== "0",
   undoStack: [], redoStack: [],
   stripOn: false, stripDay: null,
+  gridOn: false, gridSel: 0,
 };
 const pending = new Map();   // dir\0name -> tags
 let flushTimer = null, retryTimer = null, saveErr = false;
@@ -321,7 +339,7 @@ async function redo() {
 }
 
 /* ---------- 展示 ---------- */
-function renderTagUI() { renderBadges(); renderHudKeys(); renderStripDot(); }
+function renderTagUI() { renderBadges(); renderHudKeys(); renderStripDot(); renderGridDot(); }
 function renderBadges() {
   const p = curPhoto();
   const t = (p && state.tags[p.name]) || {};
@@ -396,6 +414,67 @@ function toggleStrip() {
   state.stripOn = !state.stripOn;
   $("strip").classList.toggle("hidden", !state.stripOn);
   if (state.stripOn) renderStrip();
+}
+
+/* ---------- 总览网格(G):整面缩略图,选中即跳 ---------- */
+let gridDay = null;
+function toggleGrid(force) {
+  const on = force === undefined ? !state.gridOn : force;
+  if (on && !state.photos.length) { toast("本日没有照片"); return; }
+  state.gridOn = on;
+  $("grid").classList.toggle("hidden", !on);
+  if (!on) return;
+  buildGrid();
+  state.gridSel = state.cur >= 0 ? state.cur : 0;
+  renderGridSel(true);
+  api("/api/prewarm", {dir: curDay().path, w: 240}).catch(() => {});
+}
+function buildGrid() {
+  const d = curDay();
+  $("grid-title").textContent = d.name + " · " + state.photos.length + " 张";
+  if (gridDay === d.path) { refreshGridDots(); markGridNow(); return; }
+  gridDay = d.path;
+  $("grid-body").innerHTML = state.photos.map((p, i) =>
+    `<div class="gi" data-i="${i}" onclick="gridJump(${i})" title="${p.name}">
+      <img loading="lazy" src="${thumbURL(d.path, p.name, 240)}"><i class="dot"></i><i class="star"></i><span class="nm">${p.name.replace(/\.(jpe?g)$/i, "")}</span></div>`).join("");
+  refreshGridDots(); markGridNow();
+}
+function refreshGridItem(el) {
+  const p = state.photos[+el.dataset.i]; if (!p) return;
+  const t = state.tags[p.name] || {};
+  const c = t.status ? DIMS.status.color[t.status] : null;
+  const dot = el.querySelector(".dot");
+  dot.style.background = c || "transparent";
+  dot.style.boxShadow = c ? "0 0 4px #000" : "none";
+  el.querySelector(".star").textContent = t.quality === "best" ? "★" : "";
+}
+function refreshGridDots() { for (const el of $("grid-body").children) refreshGridItem(el); }
+function renderGridDot() {
+  if (gridDay !== (curDay() && curDay().path)) return;
+  const el = $("grid-body").querySelector(`.gi[data-i="${state.cur}"]`);
+  if (el) refreshGridItem(el);
+}
+function markGridNow() {
+  for (const el of $("grid-body").querySelectorAll(".gi.now")) el.classList.remove("now");
+  const el = $("grid-body").querySelector(`.gi[data-i="${state.cur}"]`);
+  if (el) el.classList.add("now");
+}
+function renderGridSel(scroll) {
+  for (const el of $("grid-body").querySelectorAll(".gi.sel")) el.classList.remove("sel");
+  const el = $("grid-body").querySelector(`.gi[data-i="${state.gridSel}"]`);
+  if (el) { el.classList.add("sel"); if (scroll) el.scrollIntoView({block: "nearest"}); }
+}
+function gridCols() {
+  const kids = $("grid-body").children;
+  if (kids.length < 2) return 1;
+  const t0 = kids[0].offsetTop;
+  for (let i = 1; i < kids.length; i++) if (kids[i].offsetTop > t0) return i;
+  return kids.length;
+}
+function gridJump(i) { toggleGrid(false); go(i); }
+function gridMove(delta) {
+  state.gridSel = Math.max(0, Math.min(state.photos.length - 1, state.gridSel + delta));
+  renderGridSel(true);
 }
 
 function renderDayList() {
@@ -499,7 +578,7 @@ function toggleZoom(cx, cy) { state.zoom ? exitZoom() : setZoom(1, cx, cy); }
 function pan(dx, dy) { if (!state.zoom) return; state.panX += dx; state.panY += dy; clampPan(); applyZoom(); }
 const stageEl = $("stage");
 stageEl.addEventListener("wheel", e => {
-  if (!curPhoto()) return;
+  if (state.gridOn || !curPhoto()) return;   // 总览打开时让网格自己滚动
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {      // Chrome/Edge 触控板捏合会发 ctrlKey+wheel;顺带支持 ⌘+滚轮
     const dy = Math.max(-50, Math.min(50, e.deltaY));
@@ -533,6 +612,8 @@ async function loadDay(idx, opts) {
   d.count = state.photos.length;
   prefetched.clear();
   state.stripDay = null;
+  gridDay = null;
+  if (state.gridOn) { buildGrid(); state.gridSel = 0; renderGridSel(true); }
   renderDayList(); updateDayCounts(); renderStrip();
   localStorage.setItem("pt2:lastday", d.path);
   if (!state.photos.length) {
@@ -629,6 +710,25 @@ addEventListener("keydown", e => {
   if (modalOpen()) { if (e.key === "Escape") closeModals(); return; }
   if (e.metaKey && e.code === "KeyZ") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (state.gridOn) {
+    switch (e.code) {
+      case "ArrowRight": case "KeyJ": e.preventDefault(); gridMove(1); break;
+      case "ArrowLeft":  case "KeyK": e.preventDefault(); gridMove(-1); break;
+      case "ArrowDown": e.preventDefault(); gridMove(gridCols()); break;
+      case "ArrowUp":   e.preventDefault(); gridMove(-gridCols()); break;
+      case "Enter": case "Space": e.preventDefault(); gridJump(state.gridSel); break;
+      case "KeyN": e.preventDefault(); {
+        const n = state.photos.length;
+        for (let k = 1; k <= n; k++) {
+          const i = (state.gridSel + k) % n;
+          const t = state.tags[state.photos[i].name];
+          if (!t || !t.status) { state.gridSel = i; renderGridSel(true); break; }
+        }
+      } break;
+      case "KeyG": case "Escape": case "Tab": e.preventDefault(); toggleGrid(false); break;
+    }
+    return;
+  }
   const tag = KEY2TAG[e.code];
   if (tag) { e.preventDefault(); setDim(tag.dim, tag.val); return; }
   switch (e.code) {
@@ -646,6 +746,7 @@ addEventListener("keydown", e => {
     case "KeyN": e.preventDefault(); nextUntagged(); break;
     case "Period": e.preventDefault(); toggleZoom(); break;
     case "Tab": e.preventDefault(); toggleStrip(); break;
+    case "KeyG": e.preventDefault(); toggleGrid(true); break;
     case "BracketLeft":  e.preventDefault(); dayNav(-1); break;
     case "BracketRight": e.preventDefault(); dayNav(1); break;
     case "KeyH": case "Slash": e.preventDefault(); $("modal-help").classList.toggle("hidden"); break;

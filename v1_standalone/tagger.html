@@ -38,7 +38,17 @@
   .chip{padding:3px 12px;border-radius:99px;font-weight:600;font-size:15px;color:#000;box-shadow:0 1px 6px rgba(0,0,0,.5)}
   #zoom-ind{position:absolute;right:14px;top:12px;background:rgba(0,0,0,.6);padding:2px 10px;border-radius:99px;display:none}
   #empty-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--fg2);flex-direction:column;gap:14px;text-align:center}
-  #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:rgba(20,20,22,.92);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;white-space:nowrap;z-index:5}
+  #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:rgba(20,20,22,.92);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;white-space:nowrap;z-index:30}
+  /* ---- 总览网格 ---- */
+  #grid{position:absolute;inset:0;background:rgba(10,10,11,.98);z-index:20;display:flex;flex-direction:column}
+  #grid.hidden{display:none}
+  #grid-head{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;color:var(--fg2);border-bottom:1px solid var(--line);font-size:13px}
+  #grid-body{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:5px;align-content:start}
+  .gi{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--bg3);border-radius:6px;cursor:pointer;outline:2px solid transparent;outline-offset:-2px;font:12px/1.2 ui-monospace,Menlo,monospace;padding:9px 4px}
+  .gi.now{outline-color:var(--acc)}
+  .gi.sel{outline-color:#fff}
+  .gi .dot{width:9px;height:9px;border-radius:50%;background:transparent;flex:0 0 auto}
+  .gi .star{position:absolute;right:4px;top:2px;color:var(--best);font-size:11px}
   #strip{height:74px;background:var(--bg2);border-top:1px solid var(--line);display:flex;gap:4px;overflow-x:auto;padding:6px;scroll-behavior:smooth}
   #strip.hidden{display:none}
   .fsl{position:relative;flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-width:74px;background:var(--bg3);border-radius:6px;cursor:pointer;outline:2px solid transparent;font:12px/1.3 ui-monospace,Menlo,monospace;flex-direction:column;gap:3px;padding:4px 6px}
@@ -91,6 +101,10 @@
       </div>
       <div id="badges"></div>
       <div id="zoom-ind">100%</div>
+      <div id="grid" class="hidden">
+        <div id="grid-head"><span id="grid-title">总览</span><span>方向键选择 · Enter 跳转 · N 选未打 · Esc / G 关闭</span></div>
+        <div id="grid-body"></div>
+      </div>
       <div id="toast"></div>
     </div>
     <div id="strip" class="hidden"></div>
@@ -114,8 +128,9 @@
     <b>Z / X</b><span>质量:绝美 / 普通</span>            <b>U ⌘Z</b><span>撤销(⇧ 重做)</span>
     <b>⌫</b><span>清空本张全部 tag</span>               <b>N</b><span>下一张未打状态的</span>
     <b>F</b><span>「打完状态自动下一张」开关</span>       <b>.</b><span>100% ↔ 适应;触控板捏合变倍,滚动/拖拽/方向键平移</span>
-    <b>Tab</b><span>照片列表条</span>                    <b>[ / ]</b><span>上一天 / 下一天</span>
-    <b>O</b><span>换目录</span>                          <b>H / ?</b><span>本帮助</span>
+    <b>Tab</b><span>照片列表条</span>                    <b>G</b><span>整面总览(点选/Enter 跳转)</span>
+    <b>[ / ]</b><span>上一天 / 下一天</span>             <b>O</b><span>换目录</span>
+    <b>H / ?</b><span>本帮助</span>                      <b>Esc</b><span>退出缩放/总览</span>
   </div>
   <div style="margin-top:14px;text-align:right"><button onclick="toggleHelp()">关闭 (Esc)</button></div>
 </div></div>
@@ -150,6 +165,7 @@ const state = {
   auto: localStorage.getItem("pt1:auto") !== "0",
   undoStack: [], redoStack: [],
   stripOn: false, stripDay: null,
+  gridOn: false, gridSel: 0,
   dirtyDays: new Set(), bakDone: new Set(), saving: false, saveErr: false,
 };
 const $ = id => document.getElementById(id);
@@ -284,7 +300,7 @@ function commit(day, name, before, after, opts) {
   mirrorSave(day, tags);
   state.dirtyDays.add(day.name);
   scheduleSave();
-  if (day === curDay()) { renderBadges(); renderHudKeys(); renderStripDot(); updateDayCounts(); }
+  if (day === curDay()) { renderBadges(); renderHudKeys(); renderStripDot(); renderGridDot(); updateDayCounts(); }
 }
 function setDim(dim, val) {
   const p = curPhoto(); if (!p) return;
@@ -414,6 +430,8 @@ async function loadDay(idx, opts) {
   if (!d._tags) d._tags = await readDayTags(d);
   state.tags = d._tags;
   state.stripDay = null;
+  gridDay = null;
+  if (state.gridOn) { buildGrid(); state.gridSel = 0; renderGridSel(true); }
   renderDayList(); renderStrip();
   localStorage.setItem("pt1:lastday:" + state.rootName, d.name);
   if (!state.photos.length) { state.cur = -1; photoEl.classList.add("hidden"); $("empty-hint").style.display = "flex"; return; }
@@ -489,7 +507,7 @@ function toggleZoom(cx, cy) { state.zoom ? exitZoom() : setZoom(1, cx, cy); }
 function pan(dx, dy) { if (!state.zoom) return; state.panX += dx; state.panY += dy; clampPan(); applyZoom(); }
 const stageEl = $("stage");
 stageEl.addEventListener("wheel", e => {
-  if (!curPhoto()) return;
+  if (state.gridOn || !curPhoto()) return;   // 总览打开时让网格自己滚动
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {      // Chrome/Edge 触控板捏合会发 ctrlKey+wheel;顺带支持 ⌘+滚轮
     const dy = Math.max(-50, Math.min(50, e.deltaY));
@@ -600,6 +618,62 @@ function toggleStrip() {
 }
 function toggleHelp() { $("modal-help").classList.toggle("hidden"); }
 
+/* ============ 总览网格(G):整面文件名卡片,选中即跳 ============ */
+let gridDay = null;
+function toggleGrid(force) {
+  const on = force === undefined ? !state.gridOn : force;
+  if (on && !state.photos.length) { toast("本日没有照片"); return; }
+  state.gridOn = on;
+  $("grid").classList.toggle("hidden", !on);
+  if (!on) return;
+  buildGrid();
+  state.gridSel = state.cur >= 0 ? state.cur : 0;
+  renderGridSel(true);
+}
+function buildGrid() {
+  const d = curDay();
+  $("grid-title").textContent = d.name + " · " + state.photos.length + " 张";
+  if (gridDay === d.name) { refreshGridDots(); markGridNow(); return; }
+  gridDay = d.name;
+  $("grid-body").innerHTML = state.photos.map((n, i) =>
+    `<div class="gi" data-i="${i}" onclick="gridJump(${i})" title="${n}"><i class="dot"></i><span>${n.replace(/\.(jpe?g)$/i, "")}</span><i class="star"></i></div>`).join("");
+  refreshGridDots(); markGridNow();
+}
+function refreshGridItem(el) {
+  const n = state.photos[+el.dataset.i]; if (!n) return;
+  const t = state.tags[n] || {};
+  el.querySelector(".dot").style.background = t.status ? `var(--${t.status})` : "transparent";
+  el.querySelector(".star").textContent = t.quality === "best" ? "★" : "";
+}
+function refreshGridDots() { for (const el of $("grid-body").children) refreshGridItem(el); }
+function renderGridDot() {
+  if (!curDay() || gridDay !== curDay().name) return;
+  const el = $("grid-body").querySelector(`.gi[data-i="${state.cur}"]`);
+  if (el) refreshGridItem(el);
+}
+function markGridNow() {
+  for (const el of $("grid-body").querySelectorAll(".gi.now")) el.classList.remove("now");
+  const el = $("grid-body").querySelector(`.gi[data-i="${state.cur}"]`);
+  if (el) el.classList.add("now");
+}
+function renderGridSel(scroll) {
+  for (const el of $("grid-body").querySelectorAll(".gi.sel")) el.classList.remove("sel");
+  const el = $("grid-body").querySelector(`.gi[data-i="${state.gridSel}"]`);
+  if (el) { el.classList.add("sel"); if (scroll) el.scrollIntoView({block: "nearest"}); }
+}
+function gridCols() {
+  const kids = $("grid-body").children;
+  if (kids.length < 2) return 1;
+  const t0 = kids[0].offsetTop;
+  for (let i = 1; i < kids.length; i++) if (kids[i].offsetTop > t0) return i;
+  return kids.length;
+}
+function gridJump(i) { toggleGrid(false); go(i); }
+function gridMove(delta) {
+  state.gridSel = Math.max(0, Math.min(state.photos.length - 1, state.gridSel + delta));
+  renderGridSel(true);
+}
+
 /* ============ 导航 ============ */
 function dayNav(delta) {
   const i = state.dayIdx + delta;
@@ -623,6 +697,25 @@ addEventListener("keydown", e => {
   if (!$("modal-help").classList.contains("hidden")) { if (e.key === "Escape" || e.code === "KeyH") toggleHelp(); return; }
   if (e.metaKey && e.code === "KeyZ") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (state.gridOn) {
+    switch (e.code) {
+      case "ArrowRight": case "KeyJ": e.preventDefault(); gridMove(1); break;
+      case "ArrowLeft":  case "KeyK": e.preventDefault(); gridMove(-1); break;
+      case "ArrowDown": e.preventDefault(); gridMove(gridCols()); break;
+      case "ArrowUp":   e.preventDefault(); gridMove(-gridCols()); break;
+      case "Enter": case "Space": e.preventDefault(); gridJump(state.gridSel); break;
+      case "KeyN": e.preventDefault(); {
+        const n = state.photos.length;
+        for (let k = 1; k <= n; k++) {
+          const i = (state.gridSel + k) % n;
+          const t = state.tags[state.photos[i]];
+          if (!t || !t.status) { state.gridSel = i; renderGridSel(true); break; }
+        }
+      } break;
+      case "KeyG": case "Escape": case "Tab": e.preventDefault(); toggleGrid(false); break;
+    }
+    return;
+  }
   const tag = KEY2TAG[e.code];
   if (tag) { e.preventDefault(); setDim(tag.dim, tag.val); return; }
   switch (e.code) {
@@ -640,6 +733,7 @@ addEventListener("keydown", e => {
     case "KeyN": e.preventDefault(); nextUntagged(); break;
     case "Period": e.preventDefault(); toggleZoom(); break;
     case "Tab": e.preventDefault(); toggleStrip(); break;
+    case "KeyG": e.preventDefault(); toggleGrid(true); break;
     case "BracketLeft":  e.preventDefault(); dayNav(-1); break;
     case "BracketRight": e.preventDefault(); dayNav(1); break;
     case "KeyH": case "Slash": e.preventDefault(); toggleHelp(); break;
