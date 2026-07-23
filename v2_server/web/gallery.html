@@ -92,7 +92,7 @@
     <span id="lb-name"></span><span id="lb-pos"></span><span id="lb-day"></span>
     <div id="lb-chips"></div>
     <span class="sp"></span>
-    <span id="lb-hint">A/S/D Q/W/E/R Z/X 改tag · U撤销 · .或捏合放大 · Esc关闭</span>
+    <span id="lb-hint">A/S/D Q/W/E/R Z/X 改tag · U撤销 · .或滚轮/捏合放大 · Esc关闭</span>
     <button id="lb-open-tagger">去打标器 ↗</button>
   </div>
 </div>
@@ -376,13 +376,20 @@ function exitLBZoom() {
 }
 function toggleLBZoom(cx, cy) { lbz.on ? exitLBZoom() : lbSetZoom(1, cx, cy); }
 function lbPan(dx, dy) { if (!lbz.on) return; lbz.panX += dx; lbz.panY += dy; lbClamp(); lbApply(); }
+function isMouseWheel(e) {
+  if (e.deltaMode !== 0) return true;
+  const wd = e.wheelDeltaY;
+  return !!wd && wd % 120 === 0 && e.deltaX === 0;
+}
 lbStage.addEventListener("wheel", e => {
   if (state.lb < 0) return;
   e.preventDefault();
-  if (e.ctrlKey || e.metaKey) {      // Chrome/Edge 触控板捏合 = ctrlKey+wheel
+  if (e.ctrlKey || e.metaKey) {              // 触控板捏合(Chrome 发 ctrlKey+wheel)
     const dy = Math.max(-50, Math.min(50, e.deltaY));
     lbSetZoom((lbz.on ? lbz.scale : lbFit()) * Math.exp(-dy * 0.012), e.clientX, e.clientY);
-  } else if (lbz.on) lbPan(-e.deltaX, -e.deltaY);
+  } else if (isMouseWheel(e)) {              // 鼠标滚轮:每格 ±18%,锚定指针
+    lbSetZoom((lbz.on ? lbz.scale : lbFit()) * (e.deltaY < 0 ? 1.18 : 1 / 1.18), e.clientX, e.clientY);
+  } else if (lbz.on) lbPan(-e.deltaX, -e.deltaY);   // 触控板双指滚动平移
 }, {passive: false});
 let lbGBase = 0;                     // Safari 捏合
 lbStage.addEventListener("gesturestart", e => { e.preventDefault(); lbGBase = lbz.on ? lbz.scale : lbFit(); });

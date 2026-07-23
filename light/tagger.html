@@ -128,7 +128,7 @@
     <b>A / S / D</b><span>状态:直出 / 大修 / 废片</span> <b>← K</b><span>上一张</span>
     <b>Z / X</b><span>质量:绝美 / 普通</span>            <b>U ⌘Z</b><span>撤销(⇧ 重做)</span>
     <b>⌫</b><span>清空本张全部 tag</span>               <b>N</b><span>下一张未打状态的</span>
-    <b>F</b><span>「打完状态自动下一张」开关</span>       <b>.</b><span>100% ↔ 适应;触控板捏合变倍,滚动/拖拽/方向键平移</span>
+    <b>F</b><span>「打完状态自动下一张」开关</span>       <b>.</b><span>100% ↔ 适应;捏合/鼠标滚轮变倍,拖拽/滚动/方向键平移</span>
     <b>Tab</b><span>照片列表条</span>                    <b>G</b><span>整面总览(点选/Enter 跳转)</span>
     <b>[ / ]</b><span>上一天 / 下一天</span>             <b>O</b><span>换目录</span>
     <b>H / ?</b><span>本帮助</span>                      <b>Esc</b><span>退出缩放/总览</span>
@@ -507,13 +507,21 @@ function exitZoom() {
 function toggleZoom(cx, cy) { state.zoom ? exitZoom() : setZoom(1, cx, cy); }
 function pan(dx, dy) { if (!state.zoom) return; state.panX += dx; state.panY += dy; clampPan(); applyZoom(); }
 const stageEl = $("stage");
+function isMouseWheel(e) {
+  // 鼠标滚轮:行/页步进模式,或经典 ±120 整倍步进且无横向分量;触控板双指滚动是连续小数值(常带 deltaX)
+  if (e.deltaMode !== 0) return true;
+  const wd = e.wheelDeltaY;
+  return !!wd && wd % 120 === 0 && e.deltaX === 0;
+}
 stageEl.addEventListener("wheel", e => {
   if (state.gridOn || !curPhoto()) return;   // 总览打开时让网格自己滚动
   e.preventDefault();
-  if (e.ctrlKey || e.metaKey) {      // Chrome/Edge 触控板捏合会发 ctrlKey+wheel;顺带支持 ⌘+滚轮
+  if (e.ctrlKey || e.metaKey) {              // 触控板捏合(Chrome 发 ctrlKey+wheel);⌘+滚轮同效
     const dy = Math.max(-50, Math.min(50, e.deltaY));
     setZoom((state.zoom ? state.scale : fitScale()) * Math.exp(-dy * 0.012), e.clientX, e.clientY);
-  } else if (state.zoom) pan(-e.deltaX, -e.deltaY);
+  } else if (isMouseWheel(e)) {              // 鼠标滚轮:每格 ±18%,锚定指针
+    setZoom((state.zoom ? state.scale : fitScale()) * (e.deltaY < 0 ? 1.18 : 1 / 1.18), e.clientX, e.clientY);
+  } else if (state.zoom) pan(-e.deltaX, -e.deltaY);   // 触控板双指滚动平移
 }, {passive: false});
 let gBase = 0;                       // Safari 捏合走 gesture 事件
 stageEl.addEventListener("gesturestart", e => { e.preventDefault(); gBase = state.zoom ? state.scale : fitScale(); });
