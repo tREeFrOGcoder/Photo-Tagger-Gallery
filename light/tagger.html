@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>phototag 打标器 v1(单文件版)</title>
+<title>phototag 打标器 light(单文件版)</title>
 <style>
   :root{
     --bg:#111214; --bg2:#1a1c1f; --bg3:#232529; --fg:#e8e8ea; --fg2:#9a9aa0; --line:#2e3136;
@@ -87,7 +87,7 @@
       <button id="btn-root">📁 选择照片根目录 <b>O</b></button>
     </div>
     <div id="day-list"></div>
-    <div id="side-foot">v1 单文件版 · 需要 Chrome/Edge<br><span id="side-total"></span></div>
+    <div id="side-foot">light 单文件版 · 需要 Chrome/Edge<br><span id="side-total"></span></div>
   </aside>
   <main id="main">
     <div id="stage">
@@ -560,7 +560,7 @@ function renderHudInfo() {
   $("hud-file").textContent = p || "—";
   $("hud-pos").textContent = p ? (state.cur + 1) + " / " + state.photos.length : "";
   $("hud-day").textContent = d ? d.name : "";
-  document.title = (p ? p + " — " : "") + "phototag v1";
+  document.title = (p ? p + " — " : "") + "phototag light";
 }
 function renderAuto() { const el = $("hud-auto"); el.classList.toggle("on", state.auto); el.textContent = "连进F" + (state.auto ? "·开" : "·关"); }
 function renderDayList() {

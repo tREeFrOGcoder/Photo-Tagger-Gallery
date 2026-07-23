@@ -184,8 +184,10 @@ def main():
         check("GET /tagger 页面", st == 200 and b"phototag" in data)
         st, ct, data = http(port, "/gallery")
         check("GET /gallery 页面", st == 200 and b"phototag" in data)
+        st, ct, data = http(port, "/light")
+        check("GET /light 页面", st == 200 and b"showDirectoryPicker" in data)
         st, ct, data = http(port, "/v1")
-        check("GET /v1 页面", st == 200 and b"showDirectoryPicker" in data)
+        check("GET /v1 旧名兼容", st == 200 and b"showDirectoryPicker" in data)
         try:
             http(port, "/img?path=/etc/passwd")
             check("GET /img 越界 403", False)

@@ -10,9 +10,9 @@ tag 存在每个天文件夹里的一个 `phototags.json`(轻量 JSON,原子写�
 
 ## 两个版本
 
-| | v1 单文件版 | v2 服务器版(主力) |
+| | light 单文件版 | v2 服务器版(主力) |
 |---|---|---|
-| 启动 | Chrome 直接打开 `v1_standalone/tagger.html` | `python3 v2_server/serve.py` 后开浏览器 |
+| 启动 | Chrome 直接打开 `light/tagger.html` | `python3 v2_server/serve.py` 后开浏览器 |
 | 依赖 | 无(仅 Chrome/Edge) | 仅 macOS 自带 python3 + sips,任意浏览器 |
 | 打标器 | ✅(无缩略图条) | ✅(带缩略图条) |
 | 画廊 | ❌ | ✅ 缩略图缓存 / 筛选 / 导出 |
@@ -28,7 +28,7 @@ python3 serve.py --root "/Volumes/ZTSSD/Sony A7V"
 # 加 --open 自动开浏览器
 ```
 
-v1:用 Chrome 打开 `v1_standalone/tagger.html`,点「选择照片根目录」,选到 `Sony A7V` 那一层即可。
+light 版:用 Chrome 打开 `light/tagger.html`(或访问 `/light`),点「选择照片根目录」,选到 `Sony A7V` 那一层即可。
 
 ## 键位(两版一致)
 

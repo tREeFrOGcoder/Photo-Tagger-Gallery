@@ -26,7 +26,7 @@ from datetime import datetime
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(APP_DIR, "web")
-V1_HTML = os.path.normpath(os.path.join(APP_DIR, "..", "v1_standalone", "tagger.html"))
+LIGHT_HTML = os.path.normpath(os.path.join(APP_DIR, "..", "light", "tagger.html"))
 HOME = os.path.realpath(os.path.expanduser("~"))
 CACHE_DIR = os.path.join(HOME, "Library", "Caches", "phototag", "thumbs")
 SUPPORT_DIR = os.path.join(HOME, "Library", "Application Support", "phototag")
@@ -490,8 +490,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._file(os.path.join(WEB_DIR, "tagger.html"), "text/html; charset=utf-8")
             elif route == "/gallery":
                 self._file(os.path.join(WEB_DIR, "gallery.html"), "text/html; charset=utf-8")
-            elif route == "/v1":
-                self._file(V1_HTML, "text/html; charset=utf-8")
+            elif route in ("/light", "/v1"):     # /v1 为旧名兼容
+                self._file(LIGHT_HTML, "text/html; charset=utf-8")
             elif route == "/api/config":
                 self._json({"root": DEFAULT_ROOT, "home": HOME, "version": 1})
             elif route == "/api/roots":
@@ -599,7 +599,7 @@ def main(argv=None):
     print("phototag v2  根目录: %s" % DEFAULT_ROOT)
     print("  打标器  %s/tagger" % url)
     print("  画廊    %s/gallery" % url)
-    print("  v1 版   %s/v1   (Ctrl+C 退出)" % url)
+    print("  light 版 %s/light   (Ctrl+C 退出)" % url)
     if args.open:
         webbrowser.open(url + "/tagger")
     try:

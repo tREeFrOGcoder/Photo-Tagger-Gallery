@@ -1,7 +1,7 @@
 # phototag 设计文档
 
 日期:2026-07-18
-状态:已定案(v1/v2 首版实现依据)
+状态:已定案(light[原 v1]/v2 首版实现依据)
 
 ## 1. 背景与需求
 
@@ -42,7 +42,7 @@ Sony A7V/
 
 | 方案 | 说明 | 优点 | 缺点 | 结论 |
 |---|---|---|---|---|
-| **v1 纯单文件 HTML** | File System Access API(`showDirectoryPicker`),浏览器直接读写照片文件夹 | 零安装、单文件、双击即用;tag 直接写回照片文件夹 | 仅 Chrome/Edge;无缩略图缓存,画廊场景吃力;每次要重新授权一次目录 | **保留,作为轻量版打标器** |
+| **light(原 v1)纯单文件 HTML** | File System Access API(`showDirectoryPicker`),浏览器直接读写照片文件夹 | 零安装、单文件、双击即用;tag 直接写回照片文件夹 | 仅 Chrome/Edge;无缩略图缓存,画廊场景吃力;每次要重新授权一次目录 | **保留,作为轻量版打标器** |
 | **v2 本地小服务器** | Python 标准库 HTTP server + 浏览器前端;sips 缩略图缓存;任意浏览器 | 文件夹自由浏览;缩略图快;画廊/导出/统计都好做;tag 原子写+日志 | 要跑一条命令启动 | **主力方案(打标器+画廊)** |
 | Electron/Tauri 桌面应用 | 打包成 app | 体验最完整 | 构建链重、维护成本高,与"快速轻便"矛盾 | 否决 |
 
@@ -81,11 +81,11 @@ Sony A7V/
 
 ### Robust 设计
 
-- **原子写**:先写同目录临时文件,再 `os.replace`(v1 用 File System API 的 swap-file 提交,同样原子)。
+- **原子写**:先写同目录临时文件,再 `os.replace`(light 版用 File System API 的 swap-file 提交,同样原子)。
 - **写前备份**:覆盖前把旧文件复制为 `phototags.json.bak`。
 - **损坏自愈**:JSON 解析失败时,把坏文件改名为 `phototags.json.corrupt.<ts>` 留证,从 `.bak` 恢复,再不行从空开始——绝不让一张照片的 tag 操作被坏文件卡死。
 - **全局流水日志**(仅 v2):每次 tag 变更追加一行到 `~/Library/Application Support/phototag/journal.jsonl`,灾难时可整体重放恢复。
-- **v1 额外镜像**:localStorage 里按天备份一份,JSON 丢失时可恢复。
+- **light 版额外镜像**:localStorage 里按天备份一份,JSON 丢失时可恢复。
 
 ## 5. 键位设计(两版一致)
 
@@ -108,7 +108,7 @@ Sony A7V/
 | `N` | 跳到下一张**未打状态**的照片 |
 | `.` | 100% ↔ 适应屏幕;**触控板捏合**可任意倍率(锚定指针位置,拦截浏览器全局缩放);放大时双指滚动/拖拽/方向键平移 |
 | `Tab` | 缩略图条 / 照片列表 |
-| `G` | 整面总览网格(v2 缩略图 / v1 文件名卡片):方向键选择、`Enter`/点击跳转、`N` 选下一张未打的、`Esc`/`G` 关闭 |
+| `G` | 整面总览网格(v2 缩略图 / light 版文件名卡片):方向键选择、`Enter`/点击跳转、`N` 选下一张未打的、`Esc`/`G` 关闭 |
 | `[` / `]` | 上一天 / 下一天 |
 | `H` / `?` | 键位帮助 |
 | `O` | 选择/切换照片根目录 |
@@ -117,7 +117,7 @@ Sony A7V/
 
 ## 6. 架构
 
-### v1 `v1_standalone/tagger.html`
+### light `light/tagger.html`(原 v1)
 
 单文件,无依赖。`showDirectoryPicker({mode:'readwrite'})` 选根目录 → 递归找天文件夹 → 全分辨率 `<img>`(objectURL,前后 ±2 张预取,LRU 释放)→ tag 变更 400ms 防抖写回该天的 `phototags.json`。目录句柄存 IndexedDB,下次一键续用。要求 Chrome/Edge。
 
@@ -125,7 +125,7 @@ Sony A7V/
 
 ```
 serve.py            # 纯标准库;127.0.0.1:8787;线程池 HTTP
-web/tagger.html     # 打标器(与 v1 同键位,多缩略图条)
+web/tagger.html     # 打标器(与 light 版同键位,多缩略图条)
 web/gallery.html    # 画廊:时间线 + 筛选 + 灯箱 + 导出
 ```
 
@@ -170,7 +170,7 @@ HTTP API(全部 JSON,仅本机):
 
 ## 8. 已知限制与路线图
 
-- v1 仅 Chrome/Edge(File System Access API);Safari 请用 v2。
+- light 版仅 Chrome/Edge(File System Access API);Safari 请用 v2。
 - 画廊首次浏览某天要现做缩略图(0.4s/张,后台并行预热),之后走缓存。
 - 缩略图缓存无自动清理(key 含 mtime,不会脏,只会占空间;`~/Library/Caches` 可随时整体删)。
 - 未做:多选(非整组)导出、星级评分、EXIF 面板、RAW 直出对比、成片目录去重、备份策略(用户明确说还没想好,留待后续)。
