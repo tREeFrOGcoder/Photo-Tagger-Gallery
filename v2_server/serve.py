@@ -578,9 +578,12 @@ class Handler(BaseHTTPRequestHandler):
 def main(argv=None):
     global DEFAULT_ROOT, VERBOSE
     ap = argparse.ArgumentParser(description="phototag v2 server")
-    default_root = "/Volumes/ZTSSD/Sony A7V"
-    if not os.path.isdir(default_root):
-        default_root = os.path.join(HOME, "Pictures")
+    default_root = os.path.join(HOME, "Pictures")
+    for cand in ("/Volumes/My Book/Sony A7V", "/Volumes/ZTSSD/Sony A7V",
+                 "/Volumes/ZTSSD/Sony 6300", "/Volumes/My Book/Sony 6300"):
+        if os.path.isdir(cand):
+            default_root = cand
+            break
     ap.add_argument("--root", default=default_root, help="默认照片根目录")
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--open", action="store_true", help="启动后自动打开浏览器")

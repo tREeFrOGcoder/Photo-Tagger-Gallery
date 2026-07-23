@@ -29,6 +29,20 @@
   .day .bar{height:3px;background:#33363c;border-radius:2px;margin-top:5px;overflow:hidden}
   .day .bar i{display:block;height:100%;background:var(--sooc);width:0}
   #side-foot{padding:10px 12px;border-top:1px solid var(--line);color:var(--fg2);font-size:12px}
+  /* ---- 过滤器 ---- */
+  #filt{padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px}
+  #filt-head{display:flex;justify-content:space-between;align-items:center;color:var(--fg2);margin-bottom:6px}
+  #filt-head .tip{font-size:11px;opacity:.8}
+  #filt-clear{color:var(--acc);cursor:pointer;display:none}
+  .frow{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px}
+  .frow .fl{color:var(--fg2);flex:0 0 26px;line-height:20px}
+  .frow .fcs{display:flex;flex-wrap:wrap;gap:3px}
+  .fc{border:1px solid var(--line);border-radius:99px;padding:0 7px;line-height:18px;cursor:pointer;color:var(--fg2);user-select:none;white-space:nowrap}
+  .fc:hover{border-color:#4a4e55}
+  .fc.not{color:#ff7b72;border-color:#7f2f2a;text-decoration:line-through}
+  .fc.only{color:#000;font-weight:600;border-color:transparent}
+  .fsl.fout,.gi.fout{opacity:.3}
+  #hud-pos .fbadge{color:var(--acc)}
   #main{flex:1;display:flex;flex-direction:column;min-width:0}
   #stage{flex:1;position:relative;overflow:hidden;background:#0a0a0b}
   #photo{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;user-select:none;-webkit-user-drag:none}
@@ -57,17 +71,18 @@
   .fsl .dot{width:9px;height:9px;border-radius:50%;background:transparent}
   .fsl .star{position:absolute;right:4px;top:2px;color:var(--best);font-size:11px}
   #hud{display:flex;align-items:center;gap:18px;background:var(--bg2);border-top:1px solid var(--line);padding:8px 14px}
-  #hud-info{min-width:200px}
+  #hud-info{min-width:150px;white-space:nowrap}
   #hud-file{font-weight:600}
   #hud-pos,#hud-day{color:var(--fg2);margin-left:8px;font-variant-numeric:tabular-nums}
-  #hud-keys{flex:1;display:flex;gap:16px;justify-content:center}
+  #hud-keys{flex:1;display:flex;gap:12px;justify-content:center;min-width:0;overflow:hidden}
   .kgroup{display:flex;align-items:center;gap:5px}
   .kgroup .gl{color:var(--fg2);margin-right:2px}
-  .kcap{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 4px;border:1px solid var(--line);border-radius:6px;color:var(--fg2);cursor:pointer}
+  @media (max-width:1600px){.kgroup .gl{display:none}}
+  .kcap{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 4px;border:1px solid var(--line);border-radius:6px;color:var(--fg2);cursor:pointer;white-space:nowrap}
   .kcap b{font:600 11px/1.5 ui-monospace,Menlo,monospace;background:#2c2f34;border-radius:4px;padding:0 5px;color:var(--fg)}
   .kcap.on{color:#000;font-weight:600}
   .kcap.on b{background:rgba(0,0,0,.25);color:#000}
-  #hud-right{display:flex;gap:10px;align-items:center;min-width:210px;justify-content:flex-end;color:var(--fg2)}
+  #hud-right{display:flex;gap:10px;align-items:center;justify-content:flex-end;color:var(--fg2);white-space:nowrap}
   #hud-auto.on{color:var(--sooc)}
   #hud-save.dirty{color:var(--best)}
   #hud-save.err{color:var(--trash)}
@@ -85,6 +100,10 @@
     <div id="side-head">
       <div id="root-name">—</div>
       <button id="btn-root">📁 选择照片根目录 <b>O</b></button>
+    </div>
+    <div id="filt">
+      <div id="filt-head"><span>过滤 <span class="tip">点一下✕不看,再点✓只看</span></span><a id="filt-clear" onclick="clearFilt()">清除</a></div>
+      <div id="filt-rows"></div>
     </div>
     <div id="day-list"></div>
     <div id="side-foot">light 单文件版 · 需要 Chrome/Edge<br><span id="side-total"></span></div>
@@ -167,6 +186,7 @@ const state = {
   undoStack: [], redoStack: [],
   stripOn: false, stripDay: null,
   gridOn: false, gridSel: 0,
+  filt: loadFilt(),
   dirtyDays: new Set(), bakDone: new Set(), saving: false, saveErr: false,
 };
 const $ = id => document.getElementById(id);
@@ -178,6 +198,79 @@ function toast(msg, ms) {
 }
 const curPhoto = () => state.photos[state.cur] || null;
 const curDay = () => state.days[state.dayIdx] || null;
+
+/* ============ 过滤器(与 v2 相同语义;light 版键名 pt1:filt) ============ */
+function loadFilt() {
+  const empty = {status: {}, type: {}, quality: {}};
+  try {
+    const x = JSON.parse(localStorage.getItem("pt1:filt") || "{}");
+    for (const dim of Object.keys(empty))
+      for (const [v, m] of Object.entries(x[dim] || {}))
+        if (m === "not" || m === "only") empty[dim][v] = m;
+  } catch (e) {}
+  return empty;
+}
+function saveFilt() { localStorage.setItem("pt1:filt", JSON.stringify(state.filt)); }
+function filtActive() { return Object.values(state.filt).some(f => Object.keys(f).length > 0); }
+function matchFilt(name) {
+  const t = state.tags[name] || {};
+  for (const dim of Object.keys(DIMS)) {
+    const f = state.filt[dim];
+    const v = t[dim] || "none";
+    let hasOnly = false, hit = false;
+    for (const val of Object.keys(f)) if (f[val] === "only") { hasOnly = true; if (val === v) hit = true; }
+    if (hasOnly) { if (!hit) return false; }
+    else if (f[v] === "not") return false;
+  }
+  return true;
+}
+function matchCount() { let m = 0; for (const n of state.photos) if (matchFilt(n)) m++; return m; }
+function renderFilt() {
+  const rows = [];
+  for (const [dim, d] of Object.entries(DIMS)) {
+    const order = Object.values(d.keys);
+    const chips = [...order, "none"].map(v => {
+      const mode = state.filt[dim][v] || "";
+      const label = v === "none" ? "未定" : d.zh[v];
+      const color = v === "none" ? "#98989d" : d.color[v];
+      const style = mode === "only" ? `background:${color}` : "";
+      const icon = mode === "not" ? "✕" : mode === "only" ? "✓" : "";
+      return `<span class="fc ${mode}" style="${style}" onclick="cycleFilt('${dim}','${v}')">${icon}${label}</span>`;
+    }).join("");
+    rows.push(`<div class="frow"><span class="fl">${d.label}</span><span class="fcs">${chips}</span></div>`);
+  }
+  $("filt-rows").innerHTML = rows.join("");
+  $("filt-clear").style.display = filtActive() ? "" : "none";
+}
+function cycleFilt(dim, v) {
+  const cur = state.filt[dim][v];
+  if (!cur) state.filt[dim][v] = "not";
+  else if (cur === "not") state.filt[dim][v] = "only";
+  else delete state.filt[dim][v];
+  saveFilt(); renderFilt(); refreshFiltMarks();
+}
+function clearFilt() {
+  state.filt = {status: {}, type: {}, quality: {}};
+  saveFilt(); renderFilt(); refreshFiltMarks();
+  toast("已清除过滤");
+}
+function refreshFiltMarks() {
+  for (const el of $("strip").children) refreshStripItem(el);
+  for (const el of $("grid-body").children) refreshGridItem(el);
+  renderHudInfo();
+}
+function step(delta) {
+  if (!state.photos.length) return;
+  let i = state.cur;
+  while (true) {
+    i += delta;
+    if (i < 0 || i >= state.photos.length) {
+      if (filtActive()) toast(delta > 0 ? "后面没有匹配过滤的照片了" : "前面没有匹配过滤的照片了");
+      return;
+    }
+    if (matchFilt(state.photos[i])) { go(i); return; }
+  }
+}
 
 /* ============ IndexedDB(记住目录句柄) ============ */
 function idb() {
@@ -311,7 +404,7 @@ function setDim(dim, val) {
   if (wasSet) delete after[dim]; else after[dim] = val;
   commit(curDay(), p, before, after);
   if (!wasSet && dim === "status" && state.auto)
-    setTimeout(() => { if (state.cur < state.photos.length - 1) go(state.cur + 1); }, 120);
+    setTimeout(() => step(1), 120);
 }
 function clearCur() {
   const p = curPhoto(); if (!p) return;
@@ -566,7 +659,8 @@ function renderHudKeys() {
 function renderHudInfo() {
   const p = curPhoto(), d = curDay();
   $("hud-file").textContent = p || "—";
-  $("hud-pos").textContent = p ? (state.cur + 1) + " / " + state.photos.length : "";
+  $("hud-pos").innerHTML = p ? (state.cur + 1) + " / " + state.photos.length +
+    (filtActive() ? ` <span class="fbadge">· 筛中 ${matchCount()} 张</span>` : "") : "";
   $("hud-day").textContent = d ? d.name : "";
   document.title = (p ? p + " — " : "") + "phototag light";
 }
@@ -608,6 +702,7 @@ function refreshStripItem(el) {
   const t = state.tags[n] || {};
   el.querySelector(".dot").style.background = t.status ? `var(--${t.status})` : "transparent";
   el.querySelector(".star").textContent = t.quality === "best" ? "★" : "";
+  el.classList.toggle("fout", !matchFilt(n));
 }
 function renderStripDot() {
   if (!state.stripOn) return;
@@ -656,6 +751,7 @@ function refreshGridItem(el) {
   const ty = el.querySelector(".ty");
   if (t.type) { ty.textContent = DIMS.type.zh[t.type]; ty.style.background = DIMS.type.color[t.type]; ty.style.display = ""; }
   else ty.style.display = "none";
+  el.classList.toggle("fout", !matchFilt(n));
 }
 function refreshGridDots() { for (const el of $("grid-body").children) refreshGridItem(el); }
 function renderGridDot() {
@@ -697,10 +793,11 @@ function nextUntagged() {
   const n = state.photos.length; if (!n) return;
   for (let k = 1; k <= n; k++) {
     const i = (state.cur + k) % n;
-    const t = state.tags[state.photos[i]];
-    if (!t || !t.status) { go(i); if (i <= state.cur) toast("已从头循环"); return; }
+    const nm = state.photos[i];
+    const t = state.tags[nm];
+    if ((!t || !t.status) && matchFilt(nm)) { go(i); if (i <= state.cur) toast("已从头循环"); return; }
   }
-  toast("本日「状态」已全部打完 ✓");
+  toast(filtActive() ? "过滤范围内没有未打状态的照片 ✓" : "本日「状态」已全部打完 ✓");
 }
 
 /* ============ 键盘 ============ */
@@ -720,8 +817,9 @@ addEventListener("keydown", e => {
         const n = state.photos.length;
         for (let k = 1; k <= n; k++) {
           const i = (state.gridSel + k) % n;
-          const t = state.tags[state.photos[i]];
-          if (!t || !t.status) { state.gridSel = i; renderGridSel(true); break; }
+          const nm = state.photos[i];
+          const t = state.tags[nm];
+          if ((!t || !t.status) && matchFilt(nm)) { state.gridSel = i; renderGridSel(true); break; }
         }
       } break;
       case "KeyG": case "Escape": case "Tab": e.preventDefault(); toggleGrid(false); break;
@@ -731,10 +829,10 @@ addEventListener("keydown", e => {
   const tag = KEY2TAG[e.code];
   if (tag) { e.preventDefault(); setDim(tag.dim, tag.val); return; }
   switch (e.code) {
-    case "Space": case "KeyJ": e.preventDefault(); go(state.cur + 1); break;
-    case "KeyK": e.preventDefault(); go(state.cur - 1); break;
-    case "ArrowRight": e.preventDefault(); state.zoom ? pan(-300, 0) : go(state.cur + 1); break;
-    case "ArrowLeft":  e.preventDefault(); state.zoom ? pan(300, 0)  : go(state.cur - 1); break;
+    case "Space": case "KeyJ": e.preventDefault(); step(1); break;
+    case "KeyK": e.preventDefault(); step(-1); break;
+    case "ArrowRight": e.preventDefault(); state.zoom ? pan(-300, 0) : step(1); break;
+    case "ArrowLeft":  e.preventDefault(); state.zoom ? pan(300, 0)  : step(-1); break;
     case "ArrowUp":    if (state.zoom) { e.preventDefault(); pan(0, 300); } break;
     case "ArrowDown":  if (state.zoom) { e.preventDefault(); pan(0, -300); } break;
     case "KeyU": e.preventDefault(); e.shiftKey ? redo() : undo(); break;
@@ -757,7 +855,7 @@ $("btn-root").addEventListener("click", pickRoot);
 
 /* ============ 启动 ============ */
 (async function init() {
-  renderAuto(); renderHudKeys(); renderSave();
+  renderAuto(); renderHudKeys(); renderSave(); renderFilt();
   if (!window.showDirectoryPicker)
     $("hint-text").innerHTML = "⚠️ 此浏览器不支持 File System Access API<br>请用 Chrome / Edge 打开,或使用 v2 服务器版";
   try {

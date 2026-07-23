@@ -31,6 +31,21 @@
   .day .bar i{display:block;height:100%;background:var(--sooc);width:0}
   #side-foot{padding:10px 12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
   #side-foot a{color:var(--acc);text-decoration:none}
+  /* ---- 过滤器 ---- */
+  #filt{padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px}
+  #filt-head{display:flex;justify-content:space-between;align-items:center;color:var(--fg2);margin-bottom:6px}
+  #filt-head .tip{font-size:11px;opacity:.8}
+  #filt-clear{color:var(--acc);cursor:pointer;display:none}
+  .frow{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px}
+  .frow .fl{color:var(--fg2);flex:0 0 26px;line-height:20px}
+  .frow .fcs{display:flex;flex-wrap:wrap;gap:3px}
+  .fc{border:1px solid var(--line);border-radius:99px;padding:0 7px;line-height:18px;cursor:pointer;color:var(--fg2);user-select:none;white-space:nowrap}
+  .fc:hover{border-color:#4a4e55}
+  .fc.not{color:#ff7b72;border-color:#7f2f2a;text-decoration:line-through}
+  .fc.only{color:#000;font-weight:600;border-color:transparent}
+  .fs.fout img,.gi.fout img{opacity:.22;filter:grayscale(60%)}
+  .fs.fout .dot,.fs.fout .star,.gi.fout .dot,.gi.fout .star,.gi.fout .ty{opacity:.35}
+  #hud-pos .fbadge{color:var(--acc)}
   /* ---- 主区 ---- */
   #main{flex:1;display:flex;flex-direction:column;min-width:0}
   #stage{flex:1;position:relative;overflow:hidden;background:#0a0a0b}
@@ -54,17 +69,18 @@
   .fs .star{position:absolute;right:3px;top:1px;color:var(--best);font-size:12px;text-shadow:0 0 3px #000}
   /* ---- HUD ---- */
   #hud{display:flex;align-items:center;gap:18px;background:var(--bg2);border-top:1px solid var(--line);padding:8px 14px;flex-wrap:nowrap}
-  #hud-info{min-width:200px}
+  #hud-info{min-width:150px;white-space:nowrap}
   #hud-file{font-weight:600}
   #hud-pos,#hud-day{color:var(--fg2);margin-left:8px;font-variant-numeric:tabular-nums}
-  #hud-keys{flex:1;display:flex;gap:16px;justify-content:center}
+  #hud-keys{flex:1;display:flex;gap:12px;justify-content:center;min-width:0;overflow:hidden}
   .kgroup{display:flex;align-items:center;gap:5px}
   .kgroup .gl{color:var(--fg2);margin-right:2px}
-  .kcap{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 4px;border:1px solid var(--line);border-radius:6px;color:var(--fg2);cursor:pointer}
+  @media (max-width:1600px){.kgroup .gl{display:none}}
+  .kcap{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 4px;border:1px solid var(--line);border-radius:6px;color:var(--fg2);cursor:pointer;white-space:nowrap}
   .kcap b{font:600 11px/1.5 ui-monospace,Menlo,monospace;background:#2c2f34;border-radius:4px;padding:0 5px;color:var(--fg)}
   .kcap.on{color:#000;font-weight:600}
   .kcap.on b{background:rgba(0,0,0,.25);color:#000}
-  #hud-right{display:flex;gap:10px;align-items:center;min-width:210px;justify-content:flex-end;color:var(--fg2)}
+  #hud-right{display:flex;gap:10px;align-items:center;justify-content:flex-end;color:var(--fg2);white-space:nowrap}
   #hud-auto.on{color:var(--sooc)}
   #hud-save.dirty{color:var(--best)}
   #hud-save.err{color:var(--trash)}
@@ -112,6 +128,10 @@
     <div id="side-head">
       <div id="root-name">—</div>
       <button id="btn-root">📁 换目录 <b>O</b></button>
+    </div>
+    <div id="filt">
+      <div id="filt-head"><span>过滤 <span class="tip">点一下✕不看,再点✓只看</span></span><a id="filt-clear" onclick="clearFilt()">清除</a></div>
+      <div id="filt-rows"></div>
     </div>
     <div id="day-list"></div>
     <div id="side-foot">
@@ -201,6 +221,7 @@ const KEYCAP = {KeyQ:"Q",KeyW:"W",KeyE:"E",KeyR:"R",KeyA:"A",KeyS:"S",KeyD:"D",K
 const state = {
   root: null, days: [], dayIdx: -1,
   photos: [], tags: {}, cur: -1,
+  filt: loadFilt(),          // {dim: {value: "not"|"only"}},value 含 "none"=未定
   zoom: false, scale: 1, panX: 0, panY: 0,
   auto: localStorage.getItem("pt2:auto") !== "0",
   undoStack: [], redoStack: [],
@@ -235,6 +256,86 @@ function toast(msg, ms) {
 }
 const curPhoto = () => state.photos[state.cur] || null;
 const curDay   = () => state.days[state.dayIdx] || null;
+
+/* ---------- 过滤器:点一下=不看(✕),再点=只看(✓),再点=取消 ----------
+   导航键(Space/箭头/J/K/N/自动前进)只在匹配的照片间走;
+   总览/缩略图条里被过滤的照片变暗但仍可点击查看;撤销可跳到任何照片。 */
+function loadFilt() {
+  const empty = {status: {}, type: {}, quality: {}};
+  try {
+    const s = JSON.parse(localStorage.getItem("pt2:filt") || "{}");
+    for (const dim of Object.keys(empty))
+      for (const [v, m] of Object.entries(s[dim] || {}))
+        if (m === "not" || m === "only") empty[dim][v] = m;
+  } catch (e) {}
+  return empty;
+}
+function saveFilt() { localStorage.setItem("pt2:filt", JSON.stringify(state.filt)); }
+function filtActive() {
+  return Object.values(state.filt).some(f => Object.keys(f).length > 0);
+}
+function matchFilt(name) {
+  const t = state.tags[name] || {};
+  for (const dim of Object.keys(DIMS)) {
+    const f = state.filt[dim];
+    const v = t[dim] || "none";
+    let hasOnly = false, hit = false;
+    for (const val of Object.keys(f)) if (f[val] === "only") { hasOnly = true; if (val === v) hit = true; }
+    if (hasOnly) { if (!hit) return false; }
+    else if (f[v] === "not") return false;
+  }
+  return true;
+}
+function matchCount() {
+  let m = 0;
+  for (const p of state.photos) if (matchFilt(p.name)) m++;
+  return m;
+}
+function renderFilt() {
+  const rows = [];
+  for (const [dim, d] of Object.entries(DIMS)) {
+    const chips = [...d.order, "none"].map(v => {
+      const mode = state.filt[dim][v] || "";
+      const label = v === "none" ? "未定" : d.zh[v];
+      const color = v === "none" ? "#98989d" : d.color[v];
+      const style = mode === "only" ? `background:${color}` : "";
+      const icon = mode === "not" ? "✕" : mode === "only" ? "✓" : "";
+      return `<span class="fc ${mode}" style="${style}" onclick="cycleFilt('${dim}','${v}')">${icon}${label}</span>`;
+    }).join("");
+    rows.push(`<div class="frow"><span class="fl">${d.label}</span><span class="fcs">${chips}</span></div>`);
+  }
+  $("filt-rows").innerHTML = rows.join("");
+  $("filt-clear").style.display = filtActive() ? "" : "none";
+}
+function cycleFilt(dim, v) {
+  const cur = state.filt[dim][v];
+  if (!cur) state.filt[dim][v] = "not";
+  else if (cur === "not") state.filt[dim][v] = "only";
+  else delete state.filt[dim][v];
+  saveFilt(); renderFilt(); refreshFiltMarks();
+}
+function clearFilt() {
+  state.filt = {status: {}, type: {}, quality: {}};
+  saveFilt(); renderFilt(); refreshFiltMarks();
+  toast("已清除过滤");
+}
+function refreshFiltMarks() {
+  for (const el of $("strip").children) refreshStripItem(el);
+  for (const el of $("grid-body").children) refreshGridItem(el);
+  gridTitle(); renderHudInfo();
+}
+function step(delta) {   // 在匹配过滤的照片间移动
+  if (!state.photos.length) return;
+  let i = state.cur;
+  while (true) {
+    i += delta;
+    if (i < 0 || i >= state.photos.length) {
+      if (filtActive()) toast(delta > 0 ? "后面没有匹配过滤的照片了" : "前面没有匹配过滤的照片了");
+      return;
+    }
+    if (matchFilt(state.photos[i].name)) { go(i); return; }
+  }
+}
 
 /* ---------- 写入队列(防抖 + 失败重试 + 关页兜底) ---------- */
 function queueWrite(dir, name, tags) {
@@ -305,7 +406,7 @@ function setDim(dim, val) {
   if (wasSet) delete after[dim]; else after[dim] = val;
   commit(curDay().path, p.name, before, after);
   if (!wasSet && dim === "status" && state.auto)
-    setTimeout(() => { if (state.cur < state.photos.length - 1) go(state.cur + 1); }, 120);
+    setTimeout(() => step(1), 120);
 }
 function clearCur() {
   const p = curPhoto(); if (!p) return;
@@ -368,7 +469,8 @@ function renderHudKeys() {
 function renderHudInfo() {
   const p = curPhoto(), d = curDay();
   $("hud-file").textContent = p ? p.name : "—";
-  $("hud-pos").textContent = p ? (state.cur + 1) + " / " + state.photos.length : "";
+  $("hud-pos").innerHTML = p ? (state.cur + 1) + " / " + state.photos.length +
+    (filtActive() ? ` <span class="fbadge">· 筛中 ${matchCount()} 张</span>` : "") : "";
   $("hud-day").textContent = d ? d.name : "";
   document.title = (p ? p.name + " — " : "") + "phototag 打标器";
 }
@@ -399,6 +501,7 @@ function refreshStripItem(el) {
   dot.style.background = c || "transparent";
   dot.style.boxShadow = c ? "0 0 3px #000" : "none";
   el.querySelector(".star").textContent = t.quality === "best" ? "★" : "";
+  el.classList.toggle("fout", !matchFilt(p.name));
 }
 function renderStripDot() {
   if (!state.stripOn) return;
@@ -430,9 +533,14 @@ function toggleGrid(force) {
   renderGridSel(true);
   api("/api/prewarm", {dir: curDay().path, w: 480}).catch(() => {});   // 与画廊共用同规格缓存
 }
+function gridTitle() {
+  const d = curDay(); if (!d) return;
+  $("grid-title").textContent = d.name + " · " + state.photos.length + " 张" +
+    (filtActive() ? " · 筛中 " + matchCount() : "");
+}
 function buildGrid() {
   const d = curDay();
-  $("grid-title").textContent = d.name + " · " + state.photos.length + " 张";
+  gridTitle();
   if (gridDay === d.path) { refreshGridDots(); markGridNow(); return; }
   gridDay = d.path;
   $("grid-body").innerHTML = state.photos.map((p, i) =>
@@ -451,6 +559,7 @@ function refreshGridItem(el) {
   const ty = el.querySelector(".ty");
   if (t.type) { ty.textContent = DIMS.type.zh[t.type]; ty.style.background = DIMS.type.color[t.type]; ty.style.display = ""; }
   else ty.style.display = "none";
+  el.classList.toggle("fout", !matchFilt(p.name));
 }
 function refreshGridDots() { for (const el of $("grid-body").children) refreshGridItem(el); }
 function renderGridDot() {
@@ -648,10 +757,11 @@ function nextUntagged() {
   const n = state.photos.length; if (!n) return;
   for (let k = 1; k <= n; k++) {
     const i = (state.cur + k) % n;
-    const t = state.tags[state.photos[i].name];
-    if (!t || !t.status) { go(i); if (i <= state.cur) toast("已从头循环"); return; }
+    const name = state.photos[i].name;
+    const t = state.tags[name];
+    if ((!t || !t.status) && matchFilt(name)) { go(i); if (i <= state.cur) toast("已从头循环"); return; }
   }
-  toast("本日「状态」已全部打完 ✓");
+  toast(filtActive() ? "过滤范围内没有未打状态的照片 ✓" : "本日「状态」已全部打完 ✓");
 }
 async function setRoot(path, opts) {
   try {
@@ -733,8 +843,9 @@ addEventListener("keydown", e => {
         const n = state.photos.length;
         for (let k = 1; k <= n; k++) {
           const i = (state.gridSel + k) % n;
-          const t = state.tags[state.photos[i].name];
-          if (!t || !t.status) { state.gridSel = i; renderGridSel(true); break; }
+          const nm = state.photos[i].name;
+          const t = state.tags[nm];
+          if ((!t || !t.status) && matchFilt(nm)) { state.gridSel = i; renderGridSel(true); break; }
         }
       } break;
       case "KeyG": case "Escape": case "Tab": e.preventDefault(); toggleGrid(false); break;
@@ -744,10 +855,10 @@ addEventListener("keydown", e => {
   const tag = KEY2TAG[e.code];
   if (tag) { e.preventDefault(); setDim(tag.dim, tag.val); return; }
   switch (e.code) {
-    case "Space": case "KeyJ": e.preventDefault(); go(state.cur + 1); break;
-    case "KeyK": e.preventDefault(); go(state.cur - 1); break;
-    case "ArrowRight": e.preventDefault(); state.zoom ? pan(-300, 0) : go(state.cur + 1); break;
-    case "ArrowLeft":  e.preventDefault(); state.zoom ? pan(300, 0)  : go(state.cur - 1); break;
+    case "Space": case "KeyJ": e.preventDefault(); step(1); break;
+    case "KeyK": e.preventDefault(); step(-1); break;
+    case "ArrowRight": e.preventDefault(); state.zoom ? pan(-300, 0) : step(1); break;
+    case "ArrowLeft":  e.preventDefault(); state.zoom ? pan(300, 0)  : step(-1); break;
     case "ArrowUp":    if (state.zoom) { e.preventDefault(); pan(0, 300); } break;
     case "ArrowDown":  if (state.zoom) { e.preventDefault(); pan(0, -300); } break;
     case "KeyU": e.preventDefault(); e.shiftKey ? redo() : undo(); break;
@@ -773,6 +884,12 @@ photoEl.addEventListener("click", e => { if (dragMoved) { dragMoved = false; ret
 (async function init() {
   renderAuto(); renderHudKeys(); renderSave();
   const params = new URLSearchParams(location.search);
+  for (const mode of ["not", "only"])            // URL 预置过滤,如 ?not=status.trash
+    for (const spec of (params.get(mode) || "").split(",").filter(Boolean)) {
+      const [dim, v] = spec.split(".");
+      if (state.filt[dim]) state.filt[dim][v] = mode;
+    }
+  renderFilt();
   let root = params.get("root") || localStorage.getItem("pt2:root");
   if (!root) { try { root = (await api("/api/config")).root; } catch (e) {} }
   if (root) await setRoot(root, {dir: params.get("dir"), file: params.get("file")});
