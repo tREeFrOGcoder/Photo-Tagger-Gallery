@@ -8,7 +8,7 @@
   :root{
     --bg:#111214; --bg2:#1a1c1f; --bg3:#232529; --fg:#e8e8ea; --fg2:#9a9aa0; --line:#2e3136;
     --sooc:#30d158; --edit:#0a84ff; --trash:#ff453a; --best:#ffd60a; --normal:#98989d;
-    --scenery:#64d2ff; --animal:#ff9f0a; --portrait:#bf5af2; --acc:#0a84ff;
+    --scenery:#64d2ff; --animal:#ff9f0a; --portrait:#bf5af2; --insect:#a0d911; --acc:#0a84ff;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -163,7 +163,7 @@
 <div id="modal-help" class="modal hidden"><div class="card" style="width:660px">
   <h3>键位 <span style="color:var(--fg2);font-weight:400;font-size:13px">左手三排=三个维度,同键再按=取消;右手翻页</span></h3>
   <div id="help-grid">
-    <b>Q / W / E</b><span>类型:风景 / 动物 / 人像</span> <b>Space → J</b><span>下一张</span>
+    <b>Q/W/E/R</b><span>类型:风景 / 动物 / 人像 / 昆虫</span> <b>Space → J</b><span>下一张</span>
     <b>A / S / D</b><span>状态:直出 / 大修 / 废片</span> <b>← K</b><span>上一张</span>
     <b>Z / X</b><span>质量:绝美 / 普通</span>            <b>U ⌘Z</b><span>撤销(⇧ 重做)</span>
     <b>⌫</b><span>清空本张全部 tag</span>               <b>N</b><span>下一张未打状态的</span>
@@ -179,10 +179,10 @@
 "use strict";
 /* ---------- 常量 ---------- */
 const DIMS = {
-  type:    {label:"类型", order:["scenery","animal","portrait"],
-            keys:{KeyQ:"scenery", KeyW:"animal", KeyE:"portrait"},
-            zh:{scenery:"风景", animal:"动物", portrait:"人像"},
-            color:{scenery:"var(--scenery)", animal:"var(--animal)", portrait:"var(--portrait)"}},
+  type:    {label:"类型", order:["scenery","animal","portrait","insect"],
+            keys:{KeyQ:"scenery", KeyW:"animal", KeyE:"portrait", KeyR:"insect"},
+            zh:{scenery:"风景", animal:"动物", portrait:"人像", insect:"昆虫"},
+            color:{scenery:"var(--scenery)", animal:"var(--animal)", portrait:"var(--portrait)", insect:"var(--insect)"}},
   status:  {label:"状态", order:["sooc","edit","trash"],
             keys:{KeyA:"sooc", KeyS:"edit", KeyD:"trash"},
             zh:{sooc:"直出", edit:"大修", trash:"废片"},
@@ -195,7 +195,7 @@ const DIMS = {
 const KEY2TAG = {};   // code -> {dim, val}
 for (const [dim, d] of Object.entries(DIMS))
   for (const [code, val] of Object.entries(d.keys)) KEY2TAG[code] = {dim, val};
-const KEYCAP = {KeyQ:"Q",KeyW:"W",KeyE:"E",KeyA:"A",KeyS:"S",KeyD:"D",KeyZ:"Z",KeyX:"X"};
+const KEYCAP = {KeyQ:"Q",KeyW:"W",KeyE:"E",KeyR:"R",KeyA:"A",KeyS:"S",KeyD:"D",KeyZ:"Z",KeyX:"X"};
 
 /* ---------- 状态 ---------- */
 const state = {

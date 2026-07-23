@@ -39,7 +39,7 @@ SKIP_DIR_NAMES = {"_trash_bin", "node_modules", "Library"}
 DATE_RE = re.compile(r"(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})")
 VALID_TAGS = {
     "status": {"sooc", "edit", "trash"},
-    "type": {"scenery", "animal", "portrait"},
+    "type": {"scenery", "animal", "portrait", "insect"},
     "quality": {"best", "normal"},
 }
 

@@ -8,7 +8,7 @@
   :root{
     --bg:#111214; --bg2:#1a1c1f; --bg3:#232529; --fg:#e8e8ea; --fg2:#9a9aa0; --line:#2e3136;
     --sooc:#30d158; --edit:#0a84ff; --trash:#ff453a; --best:#ffd60a; --normal:#98989d;
-    --scenery:#64d2ff; --animal:#ff9f0a; --portrait:#bf5af2; --acc:#0a84ff;
+    --scenery:#64d2ff; --animal:#ff9f0a; --portrait:#bf5af2; --insect:#a0d911; --acc:#0a84ff;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
@@ -92,7 +92,7 @@
     <span id="lb-name"></span><span id="lb-pos"></span><span id="lb-day"></span>
     <div id="lb-chips"></div>
     <span class="sp"></span>
-    <span id="lb-hint">A/S/D Q/W/E Z/X 改tag · U撤销 · .或捏合放大 · Esc关闭</span>
+    <span id="lb-hint">A/S/D Q/W/E/R Z/X 改tag · U撤销 · .或捏合放大 · Esc关闭</span>
     <button id="lb-open-tagger">去打标器 ↗</button>
   </div>
 </div>
@@ -129,8 +129,8 @@
 const DIMS = {
   status:  {label:"状态", order:["sooc","edit","trash"], keys:{KeyA:"sooc",KeyS:"edit",KeyD:"trash"},
             zh:{sooc:"直出",edit:"大修",trash:"废片"}, color:{sooc:"var(--sooc)",edit:"var(--edit)",trash:"var(--trash)"}},
-  type:    {label:"类型", order:["scenery","animal","portrait"], keys:{KeyQ:"scenery",KeyW:"animal",KeyE:"portrait"},
-            zh:{scenery:"风景",animal:"动物",portrait:"人像"}, color:{scenery:"var(--scenery)",animal:"var(--animal)",portrait:"var(--portrait)"}},
+  type:    {label:"类型", order:["scenery","animal","portrait","insect"], keys:{KeyQ:"scenery",KeyW:"animal",KeyE:"portrait",KeyR:"insect"},
+            zh:{scenery:"风景",animal:"动物",portrait:"人像",insect:"昆虫"}, color:{scenery:"var(--scenery)",animal:"var(--animal)",portrait:"var(--portrait)",insect:"var(--insect)"}},
   quality: {label:"质量", order:["best","normal"], keys:{KeyZ:"best",KeyX:"normal"},
             zh:{best:"绝美",normal:"普通"}, color:{best:"var(--best)",normal:"var(--normal)"}},
 };

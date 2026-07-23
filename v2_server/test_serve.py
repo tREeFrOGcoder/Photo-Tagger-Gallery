@@ -119,10 +119,11 @@ def main():
         check("写入+非法值过滤", t["DSC00001.JPG"]["status"] == "sooc" and
               t["DSC00001.JPG"]["quality"] == "best" and
               "bogus" not in t["DSC00001.JPG"] and "type" not in t["DSC00001.JPG"], str(t))
-        serve.set_tags_many(d1, {"DSC00002.JPG": {"status": "trash"}, "DSC00003.JPG": {"type": "animal"}})
+        serve.set_tags_many(d1, {"DSC00002.JPG": {"status": "trash"}, "DSC00003.JPG": {"type": "insect"}})
         serve.set_tags_many(d1, {"DSC00001.JPG": {}})
         t = serve.load_tags(d1)
         check("清空即删除条目", "DSC00001.JPG" not in t and len(t) == 2, str(t))
+        check("insect 为合法类型", t["DSC00003.JPG"]["type"] == "insect", str(t))
         check("journal 有流水", os.path.exists(serve.JOURNAL_PATH) and
               len(open(serve.JOURNAL_PATH).read().strip().splitlines()) == 4)
         # 损坏自愈:主文件写坏,应回退 .bak(上一次成功写入前的状态)
