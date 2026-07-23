@@ -14,7 +14,7 @@ tag 存在每个天文件夹里的一个 `phototags.json`(轻量 JSON,原子写�
 |---|---|---|
 | 启动 | Chrome 直接打开 `light/tagger.html` | `python3 v2_server/serve.py` 后开浏览器 |
 | 依赖 | 无(仅 Chrome/Edge) | 仅 macOS 自带 python3 + sips,任意浏览器 |
-| 打标器 | ✅(无缩略图条) | ✅(带缩略图条) |
+| 打标器 | ✅(无缩略图条,仅 JPG) | ✅(带缩略图条,支持纯 RAW 库) |
 | 画廊 | ❌ | ✅ 缩略图缓存 / 筛选 / 导出 |
 | 适合 | 临时机器、零配置快速过片 | 日常主力 |
 
@@ -22,10 +22,10 @@ tag 存在每个天文件夹里的一个 `phototags.json`(轻量 JSON,原子写�
 
 ```bash
 cd ~/Desktop/code/phototag/v2_server
-python3 serve.py --root "/Volumes/ZTSSD/Sony A7V"
-# 打标器  http://127.0.0.1:8787/tagger
-# 画廊    http://127.0.0.1:8787/gallery
-# 加 --open 自动开浏览器
+python3 serve.py --root "/Volumes/My Book/Sony A7V" --open     # A7V 库(JPG+ARW)
+python3 serve.py --root "/Volumes/ZTSSD/Sony 6300" --open      # 6300 纯 RAW 库,直接可筛
+# 打标器  http://127.0.0.1:8787/tagger      画廊  http://127.0.0.1:8787/gallery
+# 不带 --root 时自动探测常用照片盘
 ```
 
 light 版:用 Chrome 打开 `light/tagger.html`(或访问 `/light`),点「选择照片根目录」,选到 `Sony A7V` 那一层即可。
@@ -67,16 +67,29 @@ light 版:用 Chrome 打开 `light/tagger.html`(或访问 `/light`),点「选择
 
 任何维度都可以不打(未定);第一遍建议只打状态,开着自动前进,一键一张。
 
+## 过滤器(第二遍神器)
+
+侧栏「过滤」区,每个 tag 值一个小 chip:**点一下 = ✕不看,再点 = ✓只看,再点取消**(维度内"只看"是或,维度间是且,含「未定」)。典型用法:第一遍全速 D 标废片 → 点一下「废片」→ 废片从翻页/N/自动前进里消失(总览和缩略图条里变暗但可点),安心打类型/质量。过滤条件会记住,HUD 显示「筛中 n 张」。
+
+## RAW(ARW)支持
+
+- 没有同名 JPG 的 ARW(如 6300 库)会被当作照片直接显示:浏览用**内嵌 1920 预览**(秒开),**放大时自动换全尺寸解码**(首次几秒,之后走缓存),HUD 显示 `RAW·预览` 徽章。
+- JPG+ARW 成对时仍然只看 JPG;light 版不支持 RAW。
+
 ## 工具脚本
 
 ```bash
 # 废片清扫:把 status=trash 的 JPG+ARW 移进 <root>/_trash_bin/<天>/(默认 dry-run,只打印)
-python3 tools/sweep_trash.py --root "/Volumes/ZTSSD/Sony A7V"
-python3 tools/sweep_trash.py --root "/Volumes/ZTSSD/Sony A7V" --apply   # 真的移动
+python3 tools/sweep_trash.py --root "/Volumes/My Book/Sony A7V"
+python3 tools/sweep_trash.py --root "/Volumes/My Book/Sony A7V" --apply   # 真的移动
 
 # 成片收集:按 tag 条件复制进成片目录(默认 dry-run)
-python3 tools/collect_picks.py --root "/Volumes/ZTSSD/Sony A7V" --dest ~/Pictures/成片 --where status=sooc
-python3 tools/collect_picks.py --root "/Volumes/ZTSSD/Sony A7V" --dest ~/Pictures/成片 --where status=sooc quality=best --apply
+python3 tools/collect_picks.py --root "/Volumes/My Book/Sony A7V" --dest ~/Pictures/成片 --where status=sooc
+python3 tools/collect_picks.py --root "/Volumes/My Book/Sony A7V" --dest ~/Pictures/成片 --where status=sooc quality=best --apply
+
+# XMP 桥:给「大修」的 RAW 生成 .xmp sidecar,LrC 零复制导入按色标筛(详见 docs/LIGHTROOM.md)
+python3 tools/export_xmp.py --root "/Volumes/My Book/Sony A7V"          # dry-run
+python3 tools/export_xmp.py --root "/Volumes/My Book/Sony A7V" --apply  # 绝不覆盖已有 .xmp
 ```
 
 安全原则:**任何工具都不执行删除**。废片只是移进 `_trash_bin`,确认无误后由你自己清空。
@@ -85,13 +98,13 @@ python3 tools/collect_picks.py --root "/Volumes/ZTSSD/Sony A7V" --dest ~/Picture
 
 1. 打标器第一遍:A/S/D 定状态(自动前进,一键一张),顺手 Z 标绝美。
 2. `sweep_trash.py` dry-run 看清单 → `--apply` 挪走废片。
-3. 大修片进 Lightroom,导出成品放进成片目录(按天子文件夹);成片目录同样可被打标器打开继续补 tag。
+3. 大修片:`export_xmp.py --apply` 生成 sidecar → LrC「添加」导入按黄色标聚组来修(见 [docs/LIGHTROOM.md](docs/LIGHTROOM.md));导出成品**保持原文件名**放进成片目录对应天文件夹。
 4. 直出成片用画廊「导出当前筛选」或 `collect_picks.py` 复制进成片目录。
 5. 日常浏览:画廊指向成片目录,按时间/tag 切组、导出。
 
 ## FAQ
 
 - **`._` 开头的文件是什么?** exFAT 上 macOS 的元数据垃圾,所有工具都会自动忽略。
-- **某天只有 ARW 没有 JPG?**(如 2026.06.08)会被自动跳过,打标器只认含 JPG 的文件夹。
+- **某天只有 ARW 没有 JPG?** 现在直接支持:孤 ARW 按内嵌预览显示、可打 tag、放大自动全尺寸解码(v2;light 版仍仅 JPG)。
 - **缩略图缓存在哪?** `~/Library/Caches/phototag/`,可随时整体删除,不影响任何数据。
 - **tag 会被写坏吗?** 原子写 + 写前 `.bak` 备份 + 损坏自愈 + 全局流水日志(`~/Library/Application Support/phototag/journal.jsonl`),详见设计文档。

@@ -231,6 +231,27 @@ def main():
               serve.load_tags(os.path.join(picks, "2026.01.01")).get("DSC00003.JPG", {}).get("status") == "sooc",
               r.stdout + r.stderr)
 
+        print("== tools: export_xmp ==")
+        serve.set_tags_many(rawday, {"DSC00099.ARW": {"status": "edit", "type": "animal"}})
+        xmp99 = os.path.join(rawday, "DSC00099.xmp")
+        r = subprocess.run([sys.executable, os.path.join(TOOLS, "export_xmp.py"),
+                            "--root", root, "--where", "status=edit,sooc"],
+                           capture_output=True, text=True, env=env)
+        check("xmp dry-run 不写文件", r.returncode == 0 and "待写" in r.stdout and not os.path.exists(xmp99),
+              r.stdout + r.stderr)
+        pre = os.path.join(d1, "DSC00001.xmp")   # 预置"LrC 已有"的 sidecar,验证不覆盖
+        with open(pre, "w") as f:
+            f.write("LR-OWNED")
+        r = subprocess.run([sys.executable, os.path.join(TOOLS, "export_xmp.py"),
+                            "--root", root, "--where", "status=edit,sooc", "--apply"],
+                           capture_output=True, text=True, env=env)
+        check("xmp apply 写入", r.returncode == 0 and os.path.exists(xmp99) and
+              os.path.exists(os.path.join(d1, "DSC00003.xmp")), r.stdout + r.stderr)
+        body = open(xmp99).read()
+        check("xmp 含色标/星级映射与层级关键词", 'xmp:Label="Yellow"' in body and
+              "phototag|status|edit" in body and "phototag|type|animal" in body, body[:300])
+        check("绝不覆盖已有 xmp", open(pre).read() == "LR-OWNED")
+
         print("\n全部通过:%d 项 ✓" % len(PASS))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

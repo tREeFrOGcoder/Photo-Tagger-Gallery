@@ -173,5 +173,6 @@ HTTP API(全部 JSON,仅本机):
 - light 版仅 Chrome/Edge(File System Access API);Safari 请用 v2。
 - 画廊首次浏览某天要现做缩略图(0.4s/张,后台并行预热),之后走缓存。
 - 缩略图缓存无自动清理(key 含 mtime,不会脏,只会占空间;`~/Library/Caches` 可随时整体删)。
-- 未做:多选(非整组)导出、星级评分、EXIF 面板、RAW 直出对比、成片目录去重、备份策略(用户明确说还没想好,留待后续)。
+- 已补(2026-07-23):tagger 点选过滤器(✕不看/✓只看)、纯 RAW 库直读(内嵌预览+放大全解)、export_xmp LrC 桥(见 LIGHTROOM.md)。照片库已迁移:A7V→/Volumes/My Book,6300→/Volumes/ZTSSD。
+- 未做:多选(非整组)导出、星级评分、EXIF 面板、成片目录 tag 同步工具(sync_tags)、备份策略(用户明确说还没想好,留待后续)。
 - 删除永远不自动:sweep 只移动;真正 rm 由人来。
