@@ -105,8 +105,11 @@ def main():
 
         print("== 基础 ==")
         ps = serve.list_photos(d1)
-        check("list_photos 过滤 ._ 与 RAW", [p["name"] for p in ps] ==
+        check("list_photos 过滤 ._ 与成对 RAW", [p["name"] for p in ps] ==
               ["DSC00001.JPG", "DSC00002.JPG", "DSC00003.JPG"], str(ps))
+        rawday = os.path.join(root, "rawonly")
+        check("孤 ARW 视为照片(6300 场景)", [p["name"] for p in serve.list_photos(rawday)] ==
+              ["DSC00099.ARW"], str(serve.list_photos(rawday)))
         try:
             serve.safe_path("/etc/passwd")
             check("safe_path 拒绝越界", False)
@@ -138,7 +141,7 @@ def main():
         print("== 扫描 ==")
         sc = serve.scan_root(root)
         names = sorted(x["name"] for x in sc["days"])
-        check("识别天文件夹/跳过无JPG与回收站", names == ["2026.01.01", "2026.01.02"], str(names))
+        check("识别天文件夹(含纯RAW天)/跳过回收站", names == ["2026.01.01", "2026.01.02", "rawonly"], str(names))
         day1 = next(x for x in sc["days"] if x["name"] == "2026.01.01")
         check("日期解析 2026.01.01→2026-01-01", day1["date"] == "2026-01-01")
         check("tag 计数", day1["tagged"] >= 1 and day1["counts"]["status"].get("trash") == 1, str(day1))
@@ -170,7 +173,7 @@ def main():
         port = srv.server_address[1]
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         st, ct, data = http(port, "/api/scan?root=" + urllib.parse.quote(root))
-        check("GET /api/scan", st == 200 and len(json.loads(data)["days"]) == 2)
+        check("GET /api/scan", st == 200 and len(json.loads(data)["days"]) == 3)
         st, ct, data = http(port, "/api/photos?dir=" + urllib.parse.quote(d1))
         j = json.loads(data)
         check("GET /api/photos", st == 200 and len(j["photos"]) == 3 and "DSC00002.JPG" in j["tags"])

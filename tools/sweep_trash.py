@@ -27,6 +27,18 @@ def is_photo_name(n):
     return (not n.startswith(".")) and (nl.endswith(".jpg") or nl.endswith(".jpeg"))
 
 
+def is_raw_name(n):
+    nl = n.lower()
+    return (not n.startswith(".")) and nl.endswith(tuple(RAW_EXTS))
+
+
+def media_names(files):
+    """照片名集合:全部 JPG + 无同名 JPG 的孤 ARW(如 6300 纯 RAW 库)。"""
+    jpg = {f for f in files if is_photo_name(f)}
+    stems = {os.path.splitext(f)[0] for f in jpg}
+    return jpg | {f for f in files if is_raw_name(f) and os.path.splitext(f)[0] not in stems}
+
+
 def load_tags(d):
     path = os.path.join(d, TAGFILE)
     for cand in (path, path + ".bak"):
@@ -62,20 +74,20 @@ def save_tags(d, photos):
 def day_dirs(root):
     for cur, dirs, files in os.walk(root):
         dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x not in SKIP_DIR_NAMES)
-        if any(is_photo_name(f) for f in files):
+        if media_names(files):
             yield cur, files
 
 
-def companions(jpg_name, files):
-    """一张废片要一起走的文件:JPG 本体 + 同名 RAW(不区分大小写)+ 各自的 ._ 垃圾。"""
-    stem = os.path.splitext(jpg_name)[0]
+def companions(name, files):
+    """一张废片要一起走的文件:本体 + 全部同名兄弟(JPG/RAW 互带)+ 各自的 ._ 垃圾。"""
+    stem = os.path.splitext(name)[0]
     fset = set(files)
-    out = [jpg_name]
+    out = [name]
     for f in files:
-        if f.startswith("._"):
+        if f == name or f.startswith("._"):
             continue
         fs, fe = os.path.splitext(f)
-        if fs == stem and fe.lower() in RAW_EXTS:
+        if fs == stem and (fe.lower() in RAW_EXTS or is_photo_name(f)):
             out.append(f)
     out += ["._" + f for f in list(out) if "._" + f in fset]
     return out
@@ -117,7 +129,7 @@ def main():
     plan = []  # (day_dir, day_name, [(jpg_name, [files])])
     for d, files in day_dirs(root):
         tags = load_tags(d)
-        names = {f for f in files if is_photo_name(f)}
+        names = media_names(files)
         trash = sorted(n for n, t in tags.items()
                        if isinstance(t, dict) and t.get("status") == "trash" and n in names)
         if not trash:

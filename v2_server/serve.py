@@ -29,6 +29,8 @@ WEB_DIR = os.path.join(APP_DIR, "web")
 LIGHT_HTML = os.path.normpath(os.path.join(APP_DIR, "..", "light", "tagger.html"))
 HOME = os.path.realpath(os.path.expanduser("~"))
 CACHE_DIR = os.path.join(HOME, "Library", "Caches", "phototag", "thumbs")
+PREV_DIR = os.path.join(HOME, "Library", "Caches", "phototag", "previews")
+EXIFTOOL = shutil.which("exiftool")
 SUPPORT_DIR = os.path.join(HOME, "Library", "Application Support", "phototag")
 JOURNAL_PATH = os.path.join(SUPPORT_DIR, "journal.jsonl")
 
@@ -49,6 +51,7 @@ VERBOSE = False
 _locks_guard = threading.Lock()
 _dir_locks = {}
 _thumb_sem = threading.BoundedSemaphore(6)
+_full_sem = threading.BoundedSemaphore(2)   # RAW 全解很重,限并发
 _pw_guard = threading.Lock()
 _prewarms = {}  # (dir, w) -> {done, total, active}
 _jobs_guard = threading.Lock()
@@ -78,16 +81,33 @@ def is_photo_name(n):
     return (not n.startswith(".")) and (nl.endswith(".jpg") or nl.endswith(".jpeg"))
 
 
+def is_raw_name(n):
+    return (not n.startswith(".")) and n.lower().endswith(".arw")
+
+
+def is_media_name(n):
+    """可展示/可打 tag 的文件:JPG,以及(所在目录无同名 JPG 的)ARW。"""
+    return is_photo_name(n) or is_raw_name(n)
+
+
+def media_names(files):
+    """一个目录的照片名集合:全部 JPG + 无同名 JPG 的孤 ARW(如 6300 纯 RAW 库)。"""
+    jpg = {f for f in files if is_photo_name(f)}
+    stems = {os.path.splitext(f)[0] for f in jpg}
+    return jpg | {f for f in files if is_raw_name(f) and os.path.splitext(f)[0] not in stems}
+
+
 def list_photos(d):
-    out = []
+    entries = {}
     with os.scandir(d) as it:
         for e in it:
             try:
-                if e.is_file() and is_photo_name(e.name):
+                if e.is_file() and is_media_name(e.name):
                     st = e.stat()
-                    out.append({"name": e.name, "size": st.st_size, "mtime": int(st.st_mtime)})
+                    entries[e.name] = {"name": e.name, "size": st.st_size, "mtime": int(st.st_mtime)}
             except OSError:
                 continue
+    out = [entries[n] for n in media_names(entries.keys())]
     out.sort(key=lambda x: x["name"])
     return out
 
@@ -177,7 +197,7 @@ def set_tags_many(d, updates):
     with dir_lock(d):
         photos = load_tags(d)
         for name, tags in updates.items():
-            if not isinstance(name, str) or not is_photo_name(name):
+            if not isinstance(name, str) or not is_media_name(name):
                 continue
             ct = clean_tags(tags)
             if ct:
@@ -206,7 +226,7 @@ def scan_root(root):
             truncated = True
             break
         dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x not in SKIP_DIR_NAMES)
-        names = {f for f in files if is_photo_name(f)}
+        names = media_names(files)
         if not names:
             continue
         tags = load_tags(cur)
@@ -304,11 +324,80 @@ def list_roots():
     return roots
 
 
-# ---------- 缩略图 ----------
+# ---------- 缩略图 / ARW 预览 ----------
+
+def _cache_slot(base_dir, src, st, tag):
+    key = sha1(("%s|%d|%d|%s" % (src, st.st_mtime_ns, st.st_size, tag)).encode()).hexdigest()
+    out = os.path.join(base_dir, key[:2], key + ".jpg")
+    return out, key
+
+
+def _finish_tmp(tmp, out):
+    if not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
+    os.replace(tmp, out)
+    return True
+
+
+def ensure_arw_preview(src):
+    """抽取 ARW 内嵌 JPEG 预览(A6300 为 1920x1080),并把方向标记带过去;缓存。"""
+    src = safe_path(src)
+    st = os.stat(src)
+    out, key = _cache_slot(PREV_DIR, src, st, "prev")
+    if os.path.exists(out):
+        return out, key
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    tmp = "%s.tmp.%d.%d" % (out, os.getpid(), threading.get_ident())
+    with _thumb_sem:
+        if os.path.exists(out):
+            return out, key
+        done = False
+        if EXIFTOOL:
+            for tag in ("-PreviewImage", "-JpgFromRaw"):
+                r = subprocess.run([EXIFTOOL, "-b", tag, src], capture_output=True, timeout=60)
+                if r.returncode == 0 and len(r.stdout) > 10000:
+                    with open(tmp, "wb") as f:
+                        f.write(r.stdout)
+                    subprocess.run(  # 预览块不带方向,把原片的 Orientation 拷过去让浏览器转正
+                        [EXIFTOOL, "-q", "-overwrite_original", "-TagsFromFile", src,
+                         "-Orientation", tmp], capture_output=True, timeout=60)
+                    done = True
+                    break
+        if not done:  # 没有 exiftool 或无预览块:sips 全解(慢但兜底)
+            subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "85",
+                            src, "--out", tmp], capture_output=True, timeout=180)
+    if not _finish_tmp(tmp, out):
+        raise RuntimeError("ARW preview failed: " + os.path.basename(src))
+    return out, key
+
+
+def ensure_arw_full(src):
+    """sips 全尺寸解 RAW(首次约数秒,之后走缓存);失败回退内嵌预览。"""
+    src = safe_path(src)
+    st = os.stat(src)
+    out, key = _cache_slot(PREV_DIR, src, st, "full")
+    if os.path.exists(out):
+        return out, key
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    tmp = "%s.tmp.%d.%d" % (out, os.getpid(), threading.get_ident())
+    with _full_sem:
+        if os.path.exists(out):
+            return out, key
+        subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "92",
+                        src, "--out", tmp], capture_output=True, timeout=300)
+    if not _finish_tmp(tmp, out):
+        return ensure_arw_preview(src)
+    return out, key
+
 
 def ensure_thumb(src, w):
     src = safe_path(src)
-    if not is_photo_name(os.path.basename(src)):
+    base = os.path.basename(src)
+    if not is_media_name(base):
         raise PermissionError(src)
     if w not in THUMB_WIDTHS:
         w = 480
@@ -317,6 +406,7 @@ def ensure_thumb(src, w):
     out = os.path.join(CACHE_DIR, key[:2], key + ".jpg")
     if os.path.exists(out):
         return out, key
+    pixels_src = ensure_arw_preview(src)[0] if is_raw_name(base) else src
     os.makedirs(os.path.dirname(out), exist_ok=True)
     tmp = "%s.tmp.%d.%d" % (out, os.getpid(), threading.get_ident())
     with _thumb_sem:
@@ -324,15 +414,10 @@ def ensure_thumb(src, w):
             return out, key
         r = subprocess.run(
             ["sips", "-s", "format", "jpeg", "-s", "formatOptions", "80",
-             "--resampleHeightWidthMax", str(w), src, "--out", tmp],
+             "--resampleHeightWidthMax", str(w), pixels_src, "--out", tmp],
             capture_output=True, timeout=60)
-    if r.returncode != 0 or not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+    if r.returncode != 0 or not _finish_tmp(tmp, out):
         raise RuntimeError("sips failed: " + r.stderr.decode(errors="replace")[:200])
-    os.replace(tmp, out)
     return out, key
 
 
@@ -519,11 +604,16 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(job)
             elif route == "/img":
                 p = safe_path(q.get("path"))
-                if not is_photo_name(os.path.basename(p)):
+                base = os.path.basename(p)
+                if not is_media_name(base):
                     raise PermissionError(p)
-                st = os.stat(p)
-                etag = '"%d-%d"' % (st.st_mtime_ns, st.st_size)
-                self._file(p, "image/jpeg", etag, "private, max-age=86400")
+                if is_raw_name(base):   # ARW:默认回内嵌预览,&full=1 时全尺寸解 RAW
+                    fp, key = ensure_arw_full(p) if q.get("full") else ensure_arw_preview(p)
+                    self._file(fp, "image/jpeg", '"%s"' % key, "private, max-age=604800")
+                else:
+                    st = os.stat(p)
+                    etag = '"%d-%d"' % (st.st_mtime_ns, st.st_size)
+                    self._file(p, "image/jpeg", etag, "private, max-age=86400")
             elif route == "/thumb":
                 p, key = ensure_thumb(q.get("path"), int(q.get("w") or 480))
                 self._file(p, "image/jpeg", '"%s"' % key, "private, max-age=604800")
@@ -543,7 +633,7 @@ class Handler(BaseHTTPRequestHandler):
             route = u.path
             if route == "/api/tag":
                 d, name = body.get("dir"), body.get("file")
-                if not d or not isinstance(name, str) or not is_photo_name(name):
+                if not d or not isinstance(name, str) or not is_media_name(name):
                     raise ValueError("bad dir/file")
                 d = safe_path(d)
                 if not os.path.isfile(os.path.join(d, name)):

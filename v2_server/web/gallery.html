@@ -310,6 +310,7 @@ function openLB(i) {
 function lbShow() {
   const {day, p} = state.flat[state.lb];
   exitLBZoom();
+  $("lb-img").dataset.full = "";
   $("lb-img").src = "/img?path=" + enc(day.path + "/" + p.name);
   $("lb-name").textContent = p.name;
   $("lb-pos").textContent = (state.lb + 1) + " / " + state.flat.length;
@@ -346,6 +347,12 @@ function lbClamp() {
 }
 function lbSetZoom(newS, cx, cy) {
   if (state.lb < 0 || !lbImg.naturalWidth) return;
+  const cp = state.flat[state.lb];
+  if (cp && /\.arw$/i.test(cp.p.name) && lbImg.dataset.full !== "1") {   // ARW:放大时换全尺寸
+    lbImg.dataset.full = "1";
+    lbImg.src = "/img?path=" + enc(cp.day.path + "/" + cp.p.name) + "&full=1";
+    toast("RAW 全尺寸解码中…", 2000);
+  }
   const fs = lbFit();
   newS = Math.min(ZMAX, Math.max(fs, newS));
   const r = lbStage.getBoundingClientRect();

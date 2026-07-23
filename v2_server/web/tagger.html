@@ -468,7 +468,8 @@ function renderHudKeys() {
 }
 function renderHudInfo() {
   const p = curPhoto(), d = curDay();
-  $("hud-file").textContent = p ? p.name : "—";
+  $("hud-file").innerHTML = p ? p.name +
+    (/\.arw$/i.test(p.name) ? ' <span style="font-size:10px;background:#3a3d44;border-radius:4px;padding:0 5px;color:#cbd">RAW·预览</span>' : "") : "—";
   $("hud-pos").innerHTML = p ? (state.cur + 1) + " / " + state.photos.length +
     (filtActive() ? ` <span class="fbadge">· 筛中 ${matchCount()} 张</span>` : "") : "";
   $("hud-day").textContent = d ? d.name : "";
@@ -637,6 +638,7 @@ function go(i, opts) {
   $("empty-hint").style.display = "none";
   photoEl.classList.remove("hidden");
   $("spin").style.display = "block";
+  photoEl.dataset.full = "";
   photoEl.src = imgURL(d.path, p.name);
   prefetch(i + 1); prefetch(i + 2); prefetch(i - 1);
   renderHudInfo(); renderBadges(); renderHudKeys(); highlightStrip();
@@ -658,7 +660,14 @@ function clampPan() {
   state.panY = h <= sh ? (sh - h) / 2 : Math.min(0, Math.max(sh - h, state.panY));
 }
 function setZoom(newS, cx, cy) {
-  if (!curPhoto() || !photoEl.naturalWidth) return;
+  const p = curPhoto();
+  if (!p || !photoEl.naturalWidth) return;
+  if (/\.arw$/i.test(p.name) && photoEl.dataset.full !== "1") {   // ARW:放大时换全尺寸解出的图
+    photoEl.dataset.full = "1";
+    $("spin").style.display = "block";
+    photoEl.src = imgURL(curDay().path, p.name) + "&full=1";
+    toast("RAW 全尺寸解码中…", 2000);
+  }
   const fs = fitScale();
   newS = Math.min(ZMAX, Math.max(fs, newS));
   const r = $("stage").getBoundingClientRect();

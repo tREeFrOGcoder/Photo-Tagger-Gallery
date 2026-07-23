@@ -30,6 +30,18 @@ def is_photo_name(n):
     return (not n.startswith(".")) and (nl.endswith(".jpg") or nl.endswith(".jpeg"))
 
 
+def is_raw_name(n):
+    nl = n.lower()
+    return (not n.startswith(".")) and nl.endswith((".arw", ".raw", ".dng"))
+
+
+def media_names(files):
+    """照片名集合:全部 JPG + 无同名 JPG 的孤 ARW(如 6300 纯 RAW 库)。"""
+    jpg = {f for f in files if is_photo_name(f)}
+    stems = {os.path.splitext(f)[0] for f in jpg}
+    return jpg | {f for f in files if is_raw_name(f) and os.path.splitext(f)[0] not in stems}
+
+
 def load_tags(d):
     path = os.path.join(d, TAGFILE)
     for cand in (path, path + ".bak"):
@@ -65,8 +77,9 @@ def save_tags(d, photos):
 def day_dirs(root):
     for cur, dirs, files in os.walk(root):
         dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x not in SKIP_DIR_NAMES)
-        if any(is_photo_name(f) for f in files):
-            yield cur, sorted(f for f in files if is_photo_name(f))
+        names = media_names(files)
+        if names:
+            yield cur, sorted(names)
 
 
 def parse_where(pairs):
