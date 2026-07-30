@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>phototag 工具</title>
+<style>
+  :root{
+    --bg:#111214; --bg2:#1a1c1f; --bg3:#232529; --fg:#e8e8ea; --fg2:#9a9aa0; --line:#2e3136;
+    --sooc:#30d158; --edit:#0a84ff; --trash:#ff453a; --best:#ffd60a; --normal:#98989d;
+    --scenery:#64d2ff; --animal:#ff9f0a; --portrait:#bf5af2; --insect:#a0d911; --acc:#0a84ff;
+    --warn:#ffd60a; --danger:#ff453a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+  button{font:inherit;color:inherit;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:5px 12px;cursor:pointer}
+  button:hover{border-color:#4a4e55}
+  button:disabled{opacity:.5;cursor:default}
+  input{font:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:5px 10px}
+  .primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  .danger{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
+  a{color:var(--acc);text-decoration:none}
+  /* ---- 顶栏 + 切换器 ---- */
+  #top{position:sticky;top:0;z-index:10;background:rgba(20,21,24,.96);backdrop-filter:blur(8px);
+       border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:14px}
+  #top h1{font-size:16px;font-weight:700}
+  #top .sp{flex:1}
+  #nav{display:flex;gap:2px;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:2px}
+  #nav a{padding:3px 12px;border-radius:6px;color:var(--fg2);font-weight:600}
+  #nav a.cur{background:var(--acc);color:#fff}
+  /* ---- 卡片 ---- */
+  #wrap{max-width:820px;margin:0 auto;padding:18px 16px 80px;display:flex;flex-direction:column;gap:16px}
+  .intro{color:var(--fg2);font-size:13px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .intro b{color:var(--fg)}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:11px}
+  .card.danger-card{border-color:#5a2a2a}
+  .card h2{font-size:15px;display:flex;align-items:center;gap:9px}
+  .card h2 .tag{font-size:11px;font-weight:600;color:#000;border-radius:99px;padding:1px 9px}
+  .card .d{color:var(--fg2);font-size:12.5px;margin-top:-4px}
+  .field{display:flex;align-items:center;gap:8px}
+  .field label{color:var(--fg2);width:74px;flex:none;text-align:right}
+  .field input{flex:1;min-width:0}
+  .cond{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .cond .gl{color:var(--fg2);width:74px;flex:none;text-align:right}
+  .chip{border:1px solid var(--line);border-radius:99px;padding:2px 12px;cursor:pointer;color:var(--fg2);user-select:none}
+  .chip.on{color:#000;font-weight:600;border-color:transparent}
+  .actions{display:flex;align-items:center;gap:8px;margin-top:2px}
+  .actions .sp{flex:1}
+  /* ---- 预览 / 进度 ---- */
+  .out{border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:10px 12px;font-size:13px;display:none}
+  .out.show{display:block}
+  .out .sum{font-weight:600;margin-bottom:4px}
+  .out .warn{color:var(--warn);font-size:12.5px;margin:3px 0}
+  .out .days{max-height:190px;overflow-y:auto;color:var(--fg2);font-size:12.5px;font-variant-numeric:tabular-nums}
+  .out .days .r{display:flex;justify-content:space-between;padding:1px 0;border-bottom:1px solid #212226}
+  .out .days .r b{color:var(--fg);font-weight:600}
+  .bar{height:8px;background:#2a2d31;border-radius:4px;overflow:hidden;margin:8px 0 4px}
+  .bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s}
+  .done{color:var(--sooc);font-weight:600}
+  .err{color:var(--danger);white-space:pre-wrap;font-size:12px;margin-top:4px}
+  /* ---- 浏览弹窗 ---- */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60}
+  .modal.hidden{display:none}
+  .mcard{background:var(--bg2);border:1px solid var(--line);border-radius:12px;width:560px;max-width:92vw;max-height:82vh;display:flex;flex-direction:column;padding:16px;gap:10px}
+  #brow-list{flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:8px;min-height:180px;max-height:44vh}
+  .brow-item{display:flex;justify-content:space-between;padding:6px 12px;cursor:pointer;border-bottom:1px solid #222428}
+  .brow-item:hover{background:var(--bg3)}
+  .brow-item .c{color:var(--fg2)}
+  #toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:rgba(20,20,22,.94);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;z-index:99;white-space:nowrap}
+</style>
+</head>
+<body>
+<header id="top">
+  <h1>🛠 工具</h1>
+  <span class="sp"></span>
+  <nav id="nav"><a href="/tagger">打标</a><a href="/gallery">画廊</a><a class="cur" href="/tools">工具</a></nav>
+</header>
+
+<div id="wrap">
+  <div class="intro">
+    成片流程:<b>直出</b>→成片收集复制进成片库;<b>大修</b>→XMP 导出→LrC 修→导回成片→Tag 同步补 tag;
+    <b>废片</b>→清扫进 _trash_bin。每个工具都<b>先预览(只读)、确认才执行</b>;除废片清扫外都不动源库原图。
+  </div>
+  <div id="cards"></div>
+</div>
+
+<div id="modal-brow" class="modal hidden"><div class="mcard">
+  <h3 style="font-size:15px">选择目录</h3>
+  <div style="display:flex;gap:8px"><input id="brow-input" style="flex:1" spellcheck="false"><button id="brow-go">跳转</button></div>
+  <div id="brow-roots" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+  <div id="brow-list"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span id="brow-cur" style="color:var(--fg2);font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <div style="display:flex;gap:8px"><button id="brow-cancel">取消</button><button id="brow-use" class="primary">✓ 用这个目录</button></div>
+  </div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} :
+    {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  if (!r.ok) { let m = "HTTP " + r.status; try { m = (await r.json()).error || m; } catch (e) {} throw new Error(m); }
+  return r.json();
+}
+let toastTimer = null;
+function toast(msg, ms) { const t = $("toast"); t.textContent = msg; t.style.opacity = 1; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.opacity = 0, ms || 1600); }
+function humanSize(n) { const u = ["B","KB","MB","GB","TB"]; let i = 0; while (n >= 1024 && i < 4) { n /= 1024; i++; } return (i ? n.toFixed(1) : n) + " " + u[i]; }
+
+const DIMS = {
+  status:  {zh:{sooc:"直出",edit:"大修",trash:"废片"}, order:["sooc","edit","trash"], color:{sooc:"var(--sooc)",edit:"var(--edit)",trash:"var(--trash)"}},
+  type:    {zh:{scenery:"风景",animal:"动物",portrait:"人像",insect:"昆虫"}, order:["scenery","animal","portrait","insect"], color:{scenery:"var(--scenery)",animal:"var(--animal)",portrait:"var(--portrait)",insect:"var(--insect)"}},
+  quality: {zh:{best:"绝美",normal:"普通"}, order:["best","normal"], color:{best:"var(--best)",normal:"var(--normal)"}},
+};
+
+let HOME = "";
+// 四个工具的声明式配置
+const TOOLS = [
+  {id:"collect", title:"成片收集", tag:"复制", tagColor:"var(--sooc)",
+   desc:"按 tag 条件把照片复制进成片目录(tag 随行,同名同大小跳过)。典型:状态=直出。",
+   fields:[{key:"root", label:"源库", browse:true}, {key:"dest", label:"成片目录", browse:true, def:()=>HOME+"/Pictures/成片"}],
+   dims:["status","type","quality"], condDefault:{status:["sooc"]}, apply:"确认复制"},
+  {id:"xmp", title:"XMP 导出", tag:"写 sidecar", tagColor:"var(--edit)",
+   desc:"给大修 RAW 生成 LrC 可读的 .xmp(黄标+关键词);绝不覆盖已有 .xmp。",
+   fields:[{key:"root", label:"源库", browse:true}],
+   dims:["status"], condDefault:{status:["edit"]}, apply:"确认写入"},
+  {id:"sync", title:"Tag 同步", tag:"补空白", tagColor:"var(--acc)",
+   desc:"认领 LrC 导出到成片、还没 tag 的成品:按 天+主名 回源库补 tag。只补空白,绝不覆盖。",
+   fields:[{key:"dest", label:"成片目录", browse:true, def:()=>HOME+"/Pictures/成片"}, {key:"source_root", label:"源库", browse:true}],
+   dims:[], condDefault:{}, apply:"确认补 tag"},
+  {id:"sweep", title:"废片清扫", tag:"移动", tagColor:"var(--trash)", danger:true,
+   desc:"把 status=废片 的 JPG+RAW+伴生文件移进 <源库>/_trash_bin/(只移不删,可捞回)。",
+   fields:[{key:"root", label:"源库", browse:true}],
+   dims:[], condDefault:{}, apply:"确认移动废片"},
+];
+const condState = {};   // condState[toolId][dim] = Set(values)
+
+/* ---------- 渲染卡片 ---------- */
+function buildCards() {
+  const wrap = $("cards");
+  for (const t of TOOLS) {
+    condState[t.id] = {};
+    for (const dim of t.dims) condState[t.id][dim] = new Set(t.condDefault[dim] || []);
+    const fields = t.fields.map(f => `
+      <div class="field"><label>${f.label}</label>
+        <input id="f-${t.id}-${f.key}" spellcheck="false" placeholder="${f.label}路径…">
+        ${f.browse ? `<button data-browse="f-${t.id}-${f.key}">浏览…</button>` : ""}</div>`).join("");
+    const conds = t.dims.map(dim => {
+      const d = DIMS[dim];
+      const chips = d.order.map(v => `<span class="chip" data-tool="${t.id}" data-dim="${dim}" data-val="${v}">${d.zh[v]}</span>`).join("");
+      return `<div class="cond"><span class="gl">${{status:"状态",type:"类型",quality:"质量"}[dim]}</span>${chips}</div>`;
+    }).join("");
+    const el = document.createElement("div");
+    el.className = "card" + (t.danger ? " danger-card" : "");
+    el.innerHTML = `
+      <h2><span class="tag" style="background:${t.tagColor}">${t.tag}</span>${t.title}</h2>
+      <div class="d">${t.desc}</div>
+      ${fields}${conds}
+      <div class="actions">
+        <button data-preview="${t.id}">预览</button>
+        <button class="${t.danger ? "danger" : "primary"}" data-apply="${t.id}" disabled>${t.apply}</button>
+        <span class="sp"></span>
+      </div>
+      <div class="out" id="out-${t.id}"></div>`;
+    wrap.appendChild(el);
+  }
+  // 默认值
+  for (const t of TOOLS) for (const f of t.fields) if (f.def) $(`f-${t.id}-${f.key}`).value = f.def();
+  // 事件委托
+  wrap.addEventListener("click", e => {
+    const b = e.target.closest("[data-browse]"); if (b) return openBrowse(b.dataset.browse);
+    const c = e.target.closest(".chip"); if (c) return toggleChip(c);
+    const pv = e.target.closest("[data-preview]"); if (pv) return doPreview(pv.dataset.preview);
+    const ap = e.target.closest("[data-apply]"); if (ap) return doApply(ap.dataset.apply);
+  });
+  refreshChips();
+}
+function toggleChip(c) {
+  const s = condState[c.dataset.tool][c.dataset.dim];
+  s.has(c.dataset.val) ? s.delete(c.dataset.val) : s.add(c.dataset.val);
+  refreshChips();
+}
+function refreshChips() {
+  for (const c of document.querySelectorAll(".chip")) {
+    const on = condState[c.dataset.tool][c.dataset.dim].has(c.dataset.val);
+    c.classList.toggle("on", on);
+    c.style.background = on ? DIMS[c.dataset.dim].color[c.dataset.val] : "";
+  }
+}
+
+/* ---------- 参数收集 ---------- */
+function fieldVal(toolId, key) { return $(`f-${toolId}-${key}`).value.trim(); }
+function buildWhere(toolId) {
+  const out = [];
+  for (const dim of Object.keys(condState[toolId])) {
+    const s = condState[toolId][dim];
+    if (s.size) out.push(dim + "=" + [...s].join(","));
+  }
+  return out;
+}
+function collectParams(toolId) {
+  const t = TOOLS.find(x => x.id === toolId);
+  const p = {};
+  for (const f of t.fields) p[f.key] = fieldVal(toolId, f.key);
+  if (t.dims.length) p.where = buildWhere(toolId);
+  return p;
+}
+
+/* ---------- 预览 ---------- */
+async function doPreview(toolId) {
+  const out = $("out-" + toolId);
+  const applyBtn = document.querySelector(`[data-apply="${toolId}"]`);
+  applyBtn.disabled = true;
+  out.className = "out show"; out.innerHTML = "预览中…";
+  try {
+    const plan = await api("/api/tool/plan", {tool: toolId, params: collectParams(toolId)});
+    renderPlan(toolId, plan);
+    applyBtn.disabled = plan.total_count === 0;
+  } catch (e) { out.innerHTML = `<span class="err">⚠️ ${esc(e.message)}</span>`; }
+}
+function renderPlan(toolId, plan) {
+  const out = $("out-" + toolId);
+  const sizePart = plan.total_bytes ? " · " + humanSize(plan.total_bytes) : "";
+  const destPart = plan.dest ? ` → <span style="color:var(--fg)">${esc(plan.dest)}</span>` : "";
+  const rows = (plan.days || []).slice(0, 40).map(d =>
+    `<div class="r"><span>${esc(d.day)}</span><b>${d.count} ${plan.tool === "sweep" ? "张废片" : (plan.tool === "xmp" ? "个" : "张")}</b></div>`).join("");
+  const more = (plan.days || []).length > 40 ? `<div class="r" style="color:var(--fg2)">…共 ${plan.days.length} 天</div>` : "";
+  const warns = (plan.warnings || []).map(w => `<div class="warn">⚠️ ${esc(w)}</div>`).join("");
+  const label = {collect:"张待复制", xmp:"个 sidecar 待写", sync:"张待补 tag", sweep:"张废片待移动"}[plan.tool] || "项";
+  out.innerHTML = plan.total_count === 0
+    ? `<div class="sum">没有匹配项 —— 无事可做 ✓</div>${warns}`
+    : `<div class="sum">${plan.total_count} ${label}${sizePart}${destPart}</div>${warns}
+       <div class="days">${rows}${more}</div>`;
+}
+
+/* ---------- 执行 ---------- */
+async function doApply(toolId) {
+  const t = TOOLS.find(x => x.id === toolId);
+  if (t.danger && !confirm("废片清扫会【移动】源库文件到 _trash_bin(不删除,可从那里捞回)。\n确认执行?")) return;
+  const out = $("out-" + toolId);
+  const applyBtn = document.querySelector(`[data-apply="${toolId}"]`);
+  applyBtn.disabled = true;
+  out.className = "out show";
+  out.innerHTML = `<div class="bar"><i></i></div><div class="prog" style="color:var(--fg2)">开始…</div>`;
+  const bar = out.querySelector(".bar i"), prog = out.querySelector(".prog");
+  try {
+    const r = await api("/api/tool/apply", {tool: toolId, params: collectParams(toolId)});
+    const timer = setInterval(async () => {
+      try {
+        const s = await api("/api/job_status?job=" + r.job);
+        bar.style.width = (100 * s.done / Math.max(1, s.total)) + "%";
+        prog.textContent = `进度 ${s.done}/${s.total}`;
+        if (s.finished) {
+          clearInterval(timer);
+          bar.style.width = "100%";
+          const res = s.result || {};
+          prog.innerHTML = `<span class="done">✓ ${resultText(toolId, res)}</span>`;
+          if ((s.errors || []).length) prog.innerHTML += `<div class="err">错误 ${s.errors.length} 条:\n${esc(s.errors.slice(0,6).join("\n"))}</div>`;
+          toast("完成 ✓", 2200);
+          applyBtn.disabled = false;
+        }
+      } catch (e) { clearInterval(timer); prog.innerHTML = `<span class="err">⚠️ ${esc(e.message)}</span>`; applyBtn.disabled = false; }
+    }, 400);
+  } catch (e) { out.innerHTML = `<span class="err">⚠️ ${esc(e.message)}</span>`; applyBtn.disabled = false; }
+}
+function resultText(toolId, r) {
+  if (toolId === "collect") return `复制 ${r.copied||0} · 跳过(已存在) ${r.skipped||0}`;
+  if (toolId === "xmp") return `写入 ${r.written||0} 个 .xmp sidecar`;
+  if (toolId === "sync") return `补 tag ${r.filled||0} 张`;
+  if (toolId === "sweep") return `移动 ${r.moved||0} 个文件到 _trash_bin`;
+  return "完成";
+}
+
+/* ---------- 目录浏览 ---------- */
+let browPath = null, browTarget = null;
+async function openBrowse(inputId) {
+  browTarget = inputId;
+  $("modal-brow").classList.remove("hidden");
+  try {
+    const r = await api("/api/roots");
+    $("brow-roots").innerHTML = r.roots.map(x =>
+      `<span class="chip" data-p="${esc(x.path)}">${esc(x.name)}</span>`).join("");
+    for (const c of $("brow-roots").querySelectorAll("[data-p]")) c.onclick = () => brow(c.dataset.p);
+  } catch (e) {}
+  brow($(inputId).value.trim() || null);
+}
+async function brow(path) {
+  try {
+    const r = await api("/api/browse" + (path ? "?path=" + enc(path) : ""));
+    browPath = r.path;
+    $("brow-input").value = r.path;
+    $("brow-cur").textContent = "当前:" + r.path + "(" + r.jpg + " JPG)";
+    const items = [];
+    if (r.parent) items.push(`<div class="brow-item" data-p="${esc(r.parent)}"><span>⬆︎ 上一级</span><span></span></div>`);
+    for (const d of r.dirs) items.push(`<div class="brow-item" data-p="${esc(d.path)}"><span>📁 ${esc(d.name)}</span><span class="c">${d.jpg ? d.jpg + " JPG" : ""}</span></div>`);
+    $("brow-list").innerHTML = items.join("") || `<div style="padding:14px;color:var(--fg2)">(没有子文件夹)</div>`;
+    for (const it of $("brow-list").querySelectorAll("[data-p]")) it.onclick = () => brow(it.dataset.p);
+  } catch (e) { toast("⚠️ " + e.message, 2500); }
+}
+function closeModals() { $("modal-brow").classList.add("hidden"); }
+$("brow-go").onclick = () => brow($("brow-input").value.trim());
+$("brow-input").addEventListener("keydown", e => { if (e.key === "Enter") brow($("brow-input").value.trim()); });
+$("brow-cancel").onclick = closeModals;
+$("brow-use").onclick = () => { if (browTarget && browPath) $(browTarget).value = browPath; closeModals(); };
+addEventListener("keydown", e => { if (e.key === "Escape") closeModals(); });
+
+/* ---------- 启动 ---------- */
+(async function init() {
+  try { const c = await api("/api/config"); HOME = c.home || ""; } catch (e) {}
+  // 切换器带上当前 root
+  const root = new URLSearchParams(location.search).get("root") || localStorage.getItem("ptg:root") || localStorage.getItem("pt2:root");
+  if (root) for (const a of document.querySelectorAll("#nav a")) if (!a.classList.contains("cur")) a.href += "?root=" + enc(root);
+  buildCards();
+})();
+</script>
+</body>
+</html>

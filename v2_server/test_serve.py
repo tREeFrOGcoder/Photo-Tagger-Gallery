@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,6 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TOOLS = os.path.normpath(os.path.join(HERE, "..", "tools"))
 sys.path.insert(0, HERE)
 import serve  # noqa: E402
+import phototag_core as core  # noqa: E402
 
 
 def make_test_jpg(tmp):
@@ -78,6 +80,22 @@ def build_fixture(base):
     write(os.path.join(root, "rawonly", "DSC00099.ARW"), b"raw")   # 无 JPG,应跳过
     write(os.path.join(root, "_trash_bin", "x", "DSC0.JPG"))       # 回收目录,应跳过
     return root, d1, d2
+
+
+def build_tools_fixture(base):
+    """独立的干净库,用于工具四操作(不受前面测试对主 fixture 的改动影响)。"""
+    src = os.path.join(base, "lib2")
+    da = os.path.join(src, "2026.02.01")
+    db = os.path.join(src, "2026.02.02")
+    for n in ("DSC1", "DSC2", "DSC3", "DSC4"):
+        write(os.path.join(da, n + ".JPG"))
+        write(os.path.join(da, n + ".ARW"), b"raw")
+    write(os.path.join(db, "DSC10.ARW"), b"raw")                   # 孤 ARW(6300 场景)
+    core.save_tags(da, {"DSC1.JPG": {"status": "sooc", "quality": "best"},
+                        "DSC2.JPG": {"status": "edit", "type": "animal"},
+                        "DSC3.JPG": {"status": "trash"}})
+    core.save_tags(db, {"DSC10.ARW": {"status": "edit"}})
+    return src, da, db
 
 
 def http(port, path, body=None):
@@ -251,6 +269,88 @@ def main():
         check("xmp 含色标/星级映射与层级关键词", 'xmp:Label="Yellow"' in body and
               "phototag|status|edit" in body and "phototag|type|animal" in body, body[:300])
         check("绝不覆盖已有 xmp", open(pre).read() == "LR-OWNED")
+
+        print("== 工具:core 四操作 ==")
+        src2, da, db = build_tools_fixture(tmp)
+
+        picks3 = os.path.join(tmp, "cheng")
+        cond_sooc = core.parse_where(["status=sooc"])
+        cp = core.collect_plan(src2, picks3, cond_sooc)
+        check("collect_plan 只命中直出", cp["total_count"] == 1 and cp["days"][0]["names"] == ["DSC1.JPG"], str(cp))
+        core.collect_apply(src2, picks3, cond_sooc)
+        cheng_a = os.path.join(picks3, "2026.02.01")
+        check("collect_apply 复制+tag随行", os.path.exists(os.path.join(cheng_a, "DSC1.JPG")) and
+              core.load_tags(cheng_a).get("DSC1.JPG", {}).get("status") == "sooc")
+        r2 = core.collect_apply(src2, picks3, cond_sooc)
+        check("collect 幂等重跑跳过", r2["copied"] == 0 and r2["skipped"] == 1, str(r2))
+
+        cond_edit = core.parse_where(["status=edit"])
+        xp = core.xmp_plan(src2, cond_edit)
+        check("xmp_plan 命中成对+孤 ARW", xp["total_count"] == 2, str(xp["days"]))
+        core.xmp_apply(src2, cond_edit)
+        x2, x10 = os.path.join(da, "DSC2.xmp"), os.path.join(db, "DSC10.xmp")
+        check("xmp_apply 写 sidecar+映射", os.path.exists(x2) and os.path.exists(x10) and
+              'xmp:Label="Yellow"' in open(x2).read() and "phototag|type|animal" in open(x2).read())
+        r3 = core.xmp_apply(src2, cond_edit)
+        check("xmp 不覆盖已有(重跑写 0)", r3["written"] == 0, str(r3))
+
+        # sync:成片库补空白,绝不覆盖,stem 匹配 ARW→JPG
+        core.save_tags(cheng_a, {"DSC1.JPG": {"status": "sooc"}})   # 已有 tag(模拟直出,故意只留 sooc)
+        write(os.path.join(cheng_a, "DSC2.JPG"))                    # LrC 大修成品,无 tag
+        write(os.path.join(cheng_a, "DSC99.JPG"))                   # 源库无对应
+        write(os.path.join(picks3, "2026.02.02", "DSC10.JPG"))      # 6300 大修成品(源是 ARW)
+        sp = core.sync_plan(picks3, src2)
+        check("sync_plan 只数将补(空白且源有)", sp["total_count"] == 2 and
+              sp["extra"]["skip_tagged"] >= 1 and sp["extra"]["not_found"] >= 1, str(sp["extra"]))
+        core.sync_apply(picks3, src2)
+        ta = core.load_tags(cheng_a)
+        tb = core.load_tags(os.path.join(picks3, "2026.02.02"))
+        check("sync 补大修 tag(edit/animal)", ta.get("DSC2.JPG", {}).get("status") == "edit" and
+              ta.get("DSC2.JPG", {}).get("type") == "animal", str(ta))
+        check("sync 绝不覆盖已有(DSC1 仍只 sooc)", ta["DSC1.JPG"].get("status") == "sooc" and
+              "quality" not in ta["DSC1.JPG"], str(ta.get("DSC1.JPG")))
+        check("sync stem 匹配 ARW→JPG(DSC10)", tb.get("DSC10.JPG", {}).get("status") == "edit", str(tb))
+        check("sync 不给查无项写空", "DSC99.JPG" not in ta)
+
+        wp = core.sweep_plan(src2)
+        check("sweep_plan 命中废片(含伴生)", wp["total_count"] == 1 and wp["extra"]["files"] >= 2, str(wp))
+        core.sweep_apply(src2)
+        check("sweep_apply 移动+源 tag 移除",
+              os.path.exists(os.path.join(src2, "_trash_bin", "2026.02.01", "DSC3.JPG")) and
+              "DSC3.JPG" not in core.load_tags(da))
+
+        print("== 工具:HTTP ==")
+        serve.DEFAULT_ROOT = src2
+        srv2 = serve.ThreadingHTTPServer(("127.0.0.1", 0), serve.Handler)
+        srv2.daemon_threads = True
+        port2 = srv2.server_address[1]
+        threading.Thread(target=srv2.serve_forever, daemon=True).start()
+        st, ct, data = http(port2, "/tools")
+        check("GET /tools 页面", st == 200 and b"/api/tool/plan" in data)
+        dest_http = os.path.join(tmp, "cheng_http")
+        st, ct, data = http(port2, "/api/tool/plan",
+                            {"tool": "collect", "params": {"root": src2, "dest": dest_http, "where": ["status=sooc"]}})
+        check("POST /api/tool/plan collect", st == 200 and json.loads(data)["total_count"] == 1, data)
+        st, ct, data = http(port2, "/api/tool/plan", {"tool": "sync", "params": {"dest": picks3, "source_root": src2}})
+        check("POST /api/tool/plan sync", st == 200 and "total_count" in json.loads(data))
+        st, ct, data = http(port2, "/api/tool/apply",
+                            {"tool": "collect", "params": {"root": src2, "dest": dest_http, "where": ["status=sooc"]}})
+        job = json.loads(data)["job"]
+        js = {}
+        for _ in range(300):
+            st, ct, data = http(port2, "/api/job_status?job=" + job)
+            js = json.loads(data)
+            if js.get("finished"):
+                break
+            time.sleep(0.03)
+        check("POST /api/tool/apply 异步完成", js.get("finished") and js["result"]["copied"] == 1, str(js))
+        check("apply 结果落地", os.path.exists(os.path.join(dest_http, "2026.02.01", "DSC1.JPG")))
+        try:
+            http(port2, "/api/tool/plan", {"tool": "collect", "params": {"root": "/etc", "dest": dest_http}})
+            check("工具路径越界 403", False)
+        except urllib.error.HTTPError as e:
+            check("工具路径越界 403", e.code == 403)
+        srv2.shutdown()
 
         print("\n全部通过:%d 项 ✓" % len(PASS))
     finally:
