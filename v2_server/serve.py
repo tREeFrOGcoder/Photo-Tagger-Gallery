@@ -34,16 +34,16 @@ EXIFTOOL = shutil.which("exiftool")
 SUPPORT_DIR = os.path.join(HOME, "Library", "Application Support", "phototag")
 JOURNAL_PATH = os.path.join(SUPPORT_DIR, "journal.jsonl")
 
+sys.path.insert(0, os.path.dirname(APP_DIR))   # 仓库根,便于 import 共享核心
+import phototag_core as core  # noqa: E402
+
 ALLOWED_PREFIXES = ["/Volumes", HOME]
-TAGFILE = "phototags.json"
 THUMB_WIDTHS = (240, 480, 960)
-SKIP_DIR_NAMES = {"_trash_bin", "node_modules", "Library"}
 DATE_RE = re.compile(r"(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})")
-VALID_TAGS = {
-    "status": {"sooc", "edit", "trash"},
-    "type": {"scenery", "animal", "portrait", "insect"},
-    "quality": {"best", "normal"},
-}
+# tag 词表 / 文件名 / 跳过目录统一取自 phototag_core(单一来源,避免漂移)
+TAGFILE = core.TAGFILE
+SKIP_DIR_NAMES = core.SKIP_DIR_NAMES
+VALID_TAGS = core.VALID_TAGS
 
 DEFAULT_ROOT = ""
 VERBOSE = False
@@ -76,25 +76,11 @@ def safe_path(p):
     raise PermissionError(p)
 
 
-def is_photo_name(n):
-    nl = n.lower()
-    return (not n.startswith(".")) and (nl.endswith(".jpg") or nl.endswith(".jpeg"))
-
-
-def is_raw_name(n):
-    return (not n.startswith(".")) and n.lower().endswith(".arw")
-
-
-def is_media_name(n):
-    """可展示/可打 tag 的文件:JPG,以及(所在目录无同名 JPG 的)ARW。"""
-    return is_photo_name(n) or is_raw_name(n)
-
-
-def media_names(files):
-    """一个目录的照片名集合:全部 JPG + 无同名 JPG 的孤 ARW(如 6300 纯 RAW 库)。"""
-    jpg = {f for f in files if is_photo_name(f)}
-    stems = {os.path.splitext(f)[0] for f in jpg}
-    return jpg | {f for f in files if is_raw_name(f) and os.path.splitext(f)[0] not in stems}
+# 名称助手统一到 phototag_core(server / CLI / 工具共用一份实现)
+is_photo_name = core.is_photo_name
+is_raw_name = core.is_raw_name
+is_media_name = core.is_media_name
+media_names = core.media_names
 
 
 def list_photos(d):
@@ -124,61 +110,12 @@ def dir_lock(d):
 
 # ---------- tag 存储 ----------
 
-def _tagfile(d):
-    return os.path.join(d, TAGFILE)
+# tag 原子读写(损坏自愈 + .bak)统一到 phototag_core
+load_tags = core.load_tags
+save_tags = core.save_tags
 
 
-def load_tags(d):
-    """读取某文件夹的 tag 映射;主文件坏了自动留证并回退 .bak,再不行回空。"""
-    path = _tagfile(d)
-    for cand in (path, path + ".bak"):
-        if not os.path.exists(cand):
-            continue
-        try:
-            with open(cand, "r", encoding="utf-8") as f:
-                doc = json.load(f)
-            photos = doc.get("photos")
-            if isinstance(photos, dict):
-                return photos
-        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-            if cand == path:
-                try:
-                    os.replace(path, path + ".corrupt.%d" % int(time.time()))
-                except OSError:
-                    pass
-    return {}
-
-
-def save_tags(d, photos):
-    path = _tagfile(d)
-    tmp = path + ".tmp"
-    doc = {"version": 1, "app": "phototag", "updated": now_iso(), "photos": photos}
-    if os.path.exists(path):
-        try:
-            shutil.copy2(path, path + ".bak")
-        except OSError:
-            pass
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(doc, f, ensure_ascii=False, indent=1, sort_keys=True)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
-
-
-def clean_tags(t):
-    """只保留合法维度取值;未来的自由标签 x 数组透传。"""
-    out = {}
-    if not isinstance(t, dict):
-        return out
-    for k, vals in VALID_TAGS.items():
-        v = t.get(k)
-        if isinstance(v, str) and v in vals:
-            out[k] = v
-    if isinstance(t.get("x"), list):
-        xs = [s for s in t["x"] if isinstance(s, str) and s.strip()][:32]
-        if xs:
-            out["x"] = xs
-    return out
+clean_tags = core.clean_tags   # 合法值过滤统一到 phototag_core
 
 
 def journal(entry):
@@ -454,41 +391,14 @@ def start_prewarm(d, w):
 # ---------- 导出 ----------
 
 def run_export(job, paths, dest):
-    tag_cache = {}
-    dest_tags = {}
-    for raw in paths:
-        try:
-            src = safe_path(raw)
-            base = os.path.basename(src)
-            if not is_photo_name(base) or not os.path.isfile(src):
-                raise FileNotFoundError(raw)
-            day = os.path.basename(os.path.dirname(src))
-            destdir = os.path.join(dest, day)
-            os.makedirs(destdir, exist_ok=True)
-            dst = os.path.join(destdir, base)
-            if os.path.exists(dst) and os.path.getsize(dst) == os.path.getsize(src):
-                job["skipped"] += 1
-            else:
-                shutil.copy2(src, dst)
-                job["copied"] += 1
-            srcdir = os.path.dirname(src)
-            if srcdir not in tag_cache:
-                tag_cache[srcdir] = load_tags(srcdir)
-            t = tag_cache[srcdir].get(base)
-            if t:
-                dest_tags.setdefault(destdir, {})[base] = t
-        except Exception as e:  # noqa: BLE001 —— 单张失败记录后继续
-            job["errors"].append("%s: %s" % (raw, e))
-        finally:
-            job["done"] += 1
-    for destdir, updates in dest_tags.items():
-        try:
-            with dir_lock(destdir):
-                photos = load_tags(destdir)
-                photos.update(updates)
-                save_tags(destdir, photos)
-        except OSError as e:
-            job["errors"].append("tags %s: %s" % (destdir, e))
+    """画廊「导出当前筛选」:复用 core 的复制引擎,结果回填到 job(与 collect 同一实现)。"""
+    def prog(done, total):
+        job["done"] = done
+    res = core.copy_to_dest(paths, dest, prog)
+    job["copied"] = res["copied"]
+    job["skipped"] = res["skipped"]
+    job["done"] = res["done"]
+    job["errors"] = res["errors"]
     job["finished"] = True
 
 
@@ -505,6 +415,83 @@ def start_export(paths, dest):
                "skipped": 0, "errors": [], "finished": False, "dest": dest}
         _jobs[job_id] = job
     threading.Thread(target=run_export, args=(job, paths, dest), daemon=True).start()
+    return job_id
+
+
+# ---------- 工具(collect / xmp / sync / sweep) ----------
+
+def _tool_cond(params, default):
+    w = params.get("where")
+    if isinstance(w, list) and w:
+        return core.parse_where(w)
+    if isinstance(w, str) and w.strip():
+        return core.parse_where(w.split())
+    return core.parse_where(default)
+
+
+def _tool_posargs(tool, params):
+    """校验 + safe_path 后,返回该工具 plan/apply 的位置参数(不含 on_progress)。"""
+    def sp(key):
+        v = params.get(key)
+        if not v or not isinstance(v, str):
+            raise ValueError("缺少参数 %s" % key)
+        return safe_path(v)
+    if tool == "collect":
+        return (sp("root"), sp("dest"), _tool_cond(params, ["status=sooc"]))
+    if tool == "xmp":
+        return (sp("root"), _tool_cond(params, ["status=edit"]))
+    if tool == "sync":
+        src = params.get("source_root") or params.get("root")
+        if not isinstance(src, str) or not src:
+            raise ValueError("缺少参数 source_root")
+        return (sp("dest"), safe_path(src))
+    if tool == "sweep":
+        root = sp("root")
+        b = params.get("bin")
+        return (root, safe_path(b) if b else os.path.join(root, "_trash_bin"))
+    raise ValueError("unknown tool: %s" % tool)
+
+
+def tool_plan(body):
+    tool = body.get("tool")
+    if tool not in core.PLANNERS:
+        raise ValueError("unknown tool: %s" % tool)
+    pos = _tool_posargs(tool, body.get("params") or {})
+    plan = core.PLANNERS[tool](*pos)
+    return {k: v for k, v in plan.items() if not k.startswith("_")}   # 去掉内部字段
+
+
+def start_tool(body):
+    tool = body.get("tool")
+    if tool not in core.APPLIERS:
+        raise ValueError("unknown tool: %s" % tool)
+    pos = _tool_posargs(tool, body.get("params") or {})
+    with _jobs_guard:
+        _job_seq[0] += 1
+        job_id = "job%d" % _job_seq[0]
+        job = {"id": job_id, "tool": tool, "total": 0, "done": 0,
+               "finished": False, "result": None, "errors": []}
+        _jobs[job_id] = job
+
+    def run():
+        def prog(done, total):
+            with _jobs_guard:
+                job["done"], job["total"] = done, total
+        try:
+            res = core.APPLIERS[tool](*pos, on_progress=prog)
+            with _jobs_guard:
+                job["result"] = res
+                job["errors"] = res.get("errors", [])
+                job["total"] = res.get("total", job["total"])
+                job["done"] = res.get("done", job["total"])
+        except Exception as e:  # noqa: BLE001
+            with _jobs_guard:
+                job["errors"] = ["%s: %s" % (type(e).__name__, e)]
+        finally:
+            with _jobs_guard:
+                job["finished"] = True
+
+    threading.Thread(target=run, daemon=True).start()
     return job_id
 
 
@@ -575,6 +562,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._file(os.path.join(WEB_DIR, "tagger.html"), "text/html; charset=utf-8")
             elif route == "/gallery":
                 self._file(os.path.join(WEB_DIR, "gallery.html"), "text/html; charset=utf-8")
+            elif route == "/tools":
+                self._file(os.path.join(WEB_DIR, "tools.html"), "text/html; charset=utf-8")
             elif route in ("/light", "/v1"):     # /v1 为旧名兼容
                 self._file(LIGHT_HTML, "text/html; charset=utf-8")
             elif route == "/api/config":
@@ -594,7 +583,7 @@ class Handler(BaseHTTPRequestHandler):
                 with _pw_guard:
                     st = dict(_prewarms.get((d, w)) or {})
                 self._json(st)
-            elif route == "/api/export_status":
+            elif route in ("/api/export_status", "/api/job_status"):
                 with _jobs_guard:
                     job = _jobs.get(q.get("job") or "")
                     job = dict(job) if job else None
@@ -653,6 +642,10 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/export":
                 job_id = start_export(body.get("paths"), body.get("dest"))
                 self._json({"ok": True, "job": job_id})
+            elif route == "/api/tool/plan":
+                self._json(tool_plan(body))
+            elif route == "/api/tool/apply":
+                self._json({"ok": True, "job": start_tool(body)})
             else:
                 self._err(404, "not found")
         except PermissionError as e:
