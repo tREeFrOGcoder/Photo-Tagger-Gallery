@@ -24,8 +24,8 @@ tag 存在每个天文件夹里的一个 `phototags.json`(轻量 JSON,原子写�
 cd ~/Desktop/code/phototag/v2_server
 python3 serve.py --root "/Volumes/My Book/Sony A7V" --open     # A7V 库(JPG+ARW)
 python3 serve.py --root "/Volumes/ZTSSD/Sony 6300" --open      # 6300 纯 RAW 库,直接可筛
-# 打标器  http://127.0.0.1:8787/tagger      画廊  http://127.0.0.1:8787/gallery
-# 不带 --root 时自动探测常用照片盘
+# 打标器 /tagger   画廊 /gallery   工具 /tools   —— 三页共用同一进程,右上角小切换器互跳
+# 不带 --root 时自动探测常用照片盘;挂后台:nohup python3 v2_server/serve.py >/dev/null 2>&1 &
 ```
 
 light 版:用 Chrome 打开 `light/tagger.html`(或访问 `/light`),点「选择照片根目录」,选到 `Sony A7V` 那一层即可。
@@ -96,11 +96,25 @@ python3 tools/export_xmp.py --root "/Volumes/My Book/Sony A7V" --apply  # 绝不
 
 ## 成片工作流(建议)
 
-1. 打标器第一遍:A/S/D 定状态(自动前进,一键一张),顺手 Z 标绝美。
-2. `sweep_trash.py` dry-run 看清单 → `--apply` 挪走废片。
-3. 大修片:`export_xmp.py --apply` 生成 sidecar → LrC「添加」导入按黄色标聚组来修(见 [docs/LIGHTROOM.md](docs/LIGHTROOM.md));导出成品**保持原文件名**放进成片目录对应天文件夹。
-4. 直出成片用画廊「导出当前筛选」或 `collect_picks.py` 复制进成片目录。
-5. 日常浏览:画廊指向成片目录,按时间/tag 切组、导出。
+心智模型:**两个库 + 一次 LrC 绕道**。**源库**(JPG+ARW)打完 tag,直出与大修的成品都汇进**成片库**(纯 JPG,可发布),废片进 `_trash_bin`。四个批处理都在 **工具页 `/tools`**(填路径→预览→确认→进度;也有等价 CLI):
+
+1. 打标器第一遍:A/S/D 定状态(自动前进,一键一张),顺手 Z 标绝美;废片用过滤器隐藏后继续打类型/质量。
+2. **废片清扫**:预览清单 → 确认,移进 `_trash_bin`(只移不删,可捞回)。
+3. **直出**成片:**成片收集**(条件=直出)复制进成片库,tag 随行;或画廊「导出当前筛选」发临时子集。
+4. **大修**:**XMP 导出**给大修 RAW 写 sidecar → LrC「添加」导入按黄标聚组来修(见 [docs/LIGHTROOM.md](docs/LIGHTROOM.md))→ 导出成品**保持原文件名**进成片库对应天文件夹。
+5. **Tag 同步**:把 LrC 导出、成片库里还没 tag 的大修成品,按「天+主名」回源库补 tag(**只补空白,绝不覆盖**;大修片带回 `edit` 当出身记录,兼容 6300 的 ARW→JPG)。
+6. 日常浏览/发布:画廊指向成片库,按时间/tag 切组、导出子集。
+
+## 工具页 /tools
+
+一页四张卡片,把上面第 2–5 步做成图形版,**每个都先预览(只读)、确认才执行**;路径用目录浏览弹窗选,除废片清扫外都不动源库原图。三个页面(打标 / 画廊 / 工具)由同一个后台进程提供,右上角小切换器点一下即互跳(带当前根目录,不占键位)。
+
+| 卡片 | 作用 | CLI 等价 |
+|---|---|---|
+| 成片收集 | 按 tag 条件复制进成片库(tag 随行) | `collect_picks.py` |
+| XMP 导出 | 给大修 RAW 写 LrC 可读 .xmp | `export_xmp.py` |
+| Tag 同步 | 给成片库无 tag 的 LrC 成品补 tag | (仅网页版) |
+| 废片清扫 | 废片移进 `_trash_bin`(二次确认) | `sweep_trash.py` |
 
 ## FAQ
 
