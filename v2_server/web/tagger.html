@@ -20,6 +20,10 @@
   #side{width:250px;min-width:250px;background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column}
   #side-head{padding:12px;border-bottom:1px solid var(--line)}
   #root-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px}
+  .ptnav{display:flex;gap:2px;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:2px;margin-bottom:9px}
+  .ptnav a{flex:1;text-align:center;padding:3px 0;border-radius:6px;color:var(--fg2);font-weight:600;text-decoration:none;font-size:13px}
+  .ptnav a:hover{color:var(--fg)}
+  .ptnav a.cur{background:var(--acc);color:#fff}
   #day-list{flex:1;overflow-y:auto;padding:6px}
   .day{padding:7px 9px;border-radius:8px;cursor:pointer;margin-bottom:2px}
   .day:hover{background:var(--bg3)}
@@ -126,6 +130,7 @@
 <div id="app">
   <aside id="side">
     <div id="side-head">
+      <nav class="ptnav" id="ptnav"><a class="cur" data-base="/tagger">打标</a><a data-base="/gallery" href="/gallery">画廊</a><a data-base="/tools" href="/tools">工具</a></nav>
       <div id="root-name">—</div>
       <button id="btn-root">📁 换目录 <b>O</b></button>
     </div>
@@ -772,6 +777,12 @@ function nextUntagged() {
   }
   toast(filtActive() ? "过滤范围内没有未打状态的照片 ✓" : "本日「状态」已全部打完 ✓");
 }
+function wireNav() {   // 让「打标·画廊·工具」切换器带上当前 root(跨页各自 localStorage key 不同,需显式传)
+  const root = (window.state && state.root) || localStorage.getItem("pt2:root") || new URLSearchParams(location.search).get("root");
+  if (!root) return;
+  for (const a of document.querySelectorAll("#ptnav a:not(.cur)"))
+    a.href = a.getAttribute("data-base") + "?root=" + enc(root);
+}
 async function setRoot(path, opts) {
   try {
     const r = await api("/api/scan?root=" + enc(path));
@@ -779,6 +790,7 @@ async function setRoot(path, opts) {
     localStorage.setItem("pt2:root", r.root);
     $("root-name").textContent = r.root.split("/").pop() || r.root;
     $("root-name").title = r.root;
+    wireNav();
     renderDayList();
     if (!r.days.length) {
       toast("该目录下没有含 JPG 的文件夹", 2600);
@@ -899,6 +911,7 @@ photoEl.addEventListener("click", e => { if (dragMoved) { dragMoved = false; ret
       if (state.filt[dim]) state.filt[dim][v] = mode;
     }
   renderFilt();
+  wireNav();
   let root = params.get("root") || localStorage.getItem("pt2:root");
   if (!root) { try { root = (await api("/api/config")).root; } catch (e) {} }
   if (root) await setRoot(root, {dir: params.get("dir"), file: params.get("file")});

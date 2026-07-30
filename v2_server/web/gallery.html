@@ -21,6 +21,10 @@
   #row1{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   #root-name{font-weight:700;font-size:16px}
   #count{color:var(--fg2)}
+  .ptnav{display:flex;gap:2px;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:2px}
+  .ptnav a{padding:3px 12px;border-radius:6px;color:var(--fg2);font-weight:600;text-decoration:none}
+  .ptnav a:hover{color:var(--fg)}
+  .ptnav a.cur{background:var(--acc);color:#fff}
   #row1 .sp{flex:1}
   #row2{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .fgroup{display:flex;align-items:center;gap:5px}
@@ -80,6 +84,7 @@
     <span class="sp"></span>
     <input id="search" placeholder="文件名搜索…">
     <button id="btn-export" class="primary">导出当前筛选…</button>
+    <nav class="ptnav" id="ptnav"><a data-base="/tagger" href="/tagger">打标</a><a class="cur" data-base="/gallery">画廊</a><a data-base="/tools" href="/tools">工具</a></nav>
   </div>
   <div id="row2"></div>
 </header>
@@ -167,6 +172,7 @@ async function setRoot(path) {
     localStorage.setItem("ptg:root", r.root);
     $("root-name").textContent = r.root.split("/").pop() || r.root;
     $("root-name").title = r.root;
+    wireNav();
     const days = r.days.slice().sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.name.localeCompare(a.name));
     await Promise.all(days.map(async d => {
       try { const x = await api("/api/photos?dir=" + enc(d.path)); d.photos = x.photos; d.tags = x.tags || {}; }
@@ -545,8 +551,17 @@ addEventListener("keydown", e => {
   }
 });
 
+/* ---------- 页面切换器 ---------- */
+function wireNav() {   // 「打标·画廊·工具」切换器带上当前 root(各页 localStorage key 不同,需显式传)
+  const root = state.root || localStorage.getItem("ptg:root") || new URLSearchParams(location.search).get("root");
+  if (!root) return;
+  for (const a of document.querySelectorAll("#ptnav a:not(.cur)"))
+    a.href = a.getAttribute("data-base") + "?root=" + enc(root);
+}
+
 /* ---------- 启动 ---------- */
 (async function init() {
+  wireNav();
   try { const c = await api("/api/config"); state.home = c.home || ""; if (!localStorage.getItem("ptg:root")) localStorage.setItem("ptg:root", c.root || ""); } catch (e) {}
   const params = new URLSearchParams(location.search);
   const root = params.get("root") || localStorage.getItem("ptg:root");
