@@ -73,6 +73,32 @@
   #ex-bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s}
   #ex-log{color:var(--fg2);font-size:12px;max-height:120px;overflow-y:auto;white-space:pre-wrap}
   #toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:rgba(20,20,22,.94);border:1px solid var(--line);padding:6px 16px;border-radius:99px;opacity:0;transition:opacity .18s;pointer-events:none;z-index:99;white-space:nowrap}
+  /* ---- 选择 ---- */
+  .it .selbox{position:absolute;right:5px;bottom:5px;width:22px;height:22px;border-radius:6px;border:2px solid rgba(255,255,255,.85);background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:3;cursor:pointer}
+  .it:hover .selbox{display:flex}
+  .it.sel .selbox{display:flex;background:var(--acc);border-color:var(--acc)}
+  .it .selbox .tick{color:#fff;font-size:13px;line-height:1;opacity:0}
+  .it.sel .selbox .tick{opacity:1}
+  .it.sel{outline:3px solid var(--acc);outline-offset:-3px}
+  .sec h2 .selday{color:var(--acc);font-size:12px;cursor:pointer;font-weight:400}
+  #seltools{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:rgba(28,30,34,.97);border:1px solid var(--line);border-radius:12px;padding:8px 14px;display:flex;gap:8px;align-items:center;z-index:45;box-shadow:0 8px 28px rgba(0,0,0,.55)}
+  #seltools.hidden{display:none}
+  #seltools b{color:var(--acc)}
+  /* ---- 幻灯片 ---- */
+  #ss{position:fixed;inset:0;background:#000;z-index:80;display:flex;flex-direction:column;--fade:300ms}
+  #ss.hidden{display:none}
+  #ss-stage{flex:1;position:relative;overflow:hidden;opacity:1;transition:opacity var(--fade) ease}
+  #ss-row{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  #ss-row img{display:block;object-fit:contain}
+  #ss-load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font-size:15px;z-index:4}
+  #ss-load.hidden{display:none}
+  #ss-ctrl{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;gap:12px;align-items:center;background:rgba(20,20,22,.82);border:1px solid var(--line);border-radius:99px;padding:7px 18px;z-index:5;transition:opacity .3s;font-size:13px}
+  #ss-ctrl.hide{opacity:0;pointer-events:none}
+  #ss-ctrl button{background:transparent;border:none;padding:2px 6px;font-size:17px;line-height:1}
+  #ss-ctrl .seg{display:flex;gap:1px;background:var(--bg3);border-radius:7px;padding:2px}
+  #ss-ctrl .seg button{border-radius:5px;font-size:12px;padding:2px 9px;color:var(--fg2)}
+  #ss-ctrl .seg button.on{background:var(--acc);color:#fff}
+  #ss-ctrl .lbl{color:var(--fg2);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
 </style>
 </head>
 <body>
@@ -83,6 +109,7 @@
     <span id="count"></span>
     <span class="sp"></span>
     <input id="search" placeholder="文件名搜索…">
+    <button id="btn-play">▶ 幻灯片</button>
     <button id="btn-export" class="primary">导出当前筛选…</button>
     <nav class="ptnav" id="ptnav"><a data-base="/tagger" href="/tagger">打标</a><a class="cur" data-base="/gallery">画廊</a><a data-base="/tools" href="/tools">工具</a></nav>
   </div>
@@ -127,6 +154,37 @@
     <button id="ex-start" class="primary">开始导出</button>
   </div>
 </div></div>
+<div id="seltools" class="hidden">
+  已选 <b id="sel-n">0</b> 张
+  <button id="st-play" class="primary">▶ 播放选中</button>
+  <button id="st-export">导出选中…</button>
+  <button id="st-all">全选</button>
+  <button id="st-clear">清除</button>
+</div>
+
+<div id="ss" class="hidden">
+  <div id="ss-stage"><div id="ss-row"></div></div>
+  <div id="ss-load" class="hidden">准备中…</div>
+  <div id="ss-ctrl">
+    <button id="ss-prev" title="上一张 ←">⏮</button>
+    <button id="ss-play" title="暂停/播放 空格">⏸</button>
+    <button id="ss-next" title="下一张 →">⏭</button>
+    <span class="lbl" id="ss-pos"></span>
+    <span class="seg" id="ss-shuf">
+      <button data-s="none" class="on">顺序</button>
+      <button data-s="small">按日乱</button>
+      <button data-s="big">全乱</button>
+    </span>
+    <span class="seg" id="ss-speed">
+      <button data-d="2000">2s</button>
+      <button data-d="4000" class="on">4s</button>
+      <button data-d="6000">6s</button>
+      <button data-d="8000">8s</button>
+    </span>
+    <button id="ss-exit" title="退出 Esc">✕</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -149,9 +207,11 @@ const state = {
   flat: [],                                 // 当前筛选后的 [{day, p}]
   lb: -1, undoStack: [], redoStack: [],
   prewarmed: new Set(),
+  sel: new Set(),                           // 选中的照片 key(day.path+"/"+name)
 };
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
+const escAttr = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} :
     {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
@@ -247,8 +307,11 @@ function itemHTML(day, p, idx) {
   const dot = t.status ? `<i class="dot" style="background:${DIMS.status.color[t.status]}"></i>` : "";
   const star = t.quality === "best" ? `<i class="star">★</i>` : "";
   const ty = t.type ? `<i class="ty" style="background:${DIMS.type.color[t.type]}">${DIMS.type.zh[t.type]}</i>` : "";
-  return `<div class="it" data-name="${p.name}" onclick="openLB(${idx})">
-    <img loading="lazy" src="/thumb?path=${enc(day.path + "/" + p.name)}&w=480">${dot}${star}${ty}</div>`;
+  const key = day.path + "/" + p.name;
+  const sel = state.sel.has(key) ? " sel" : "";
+  return `<div class="it${sel}" data-name="${p.name}" data-key="${escAttr(key)}" onclick="tileClick(${idx},event)">
+    <img loading="lazy" src="/thumb?path=${enc(key)}&w=480">${dot}${star}${ty}
+    <div class="selbox" onclick="toggleSel(${idx},event)"><span class="tick">✓</span></div></div>`;
 }
 function render() {
   renderFilters();
@@ -267,7 +330,8 @@ function render() {
     if (!items.length) continue;
     secs.push(`<section class="sec" data-day="${day.path}">
       <h2>${day.date || day.name} <small>${day.name} · ${items.length}${items.length !== day.photos.length ? " / " + day.photos.length : ""} 张</small>
-      <a href="/tagger?root=${enc(state.root)}&dir=${enc(day.path)}" target="_blank">去打标 ↗</a></h2>
+      <a href="/tagger?root=${enc(state.root)}&dir=${enc(day.path)}" target="_blank">去打标 ↗</a>
+      <span class="selday" onclick="selectDay('${day.path.replace(/'/g, "\\'")}')">全选本天</span></h2>
       <div class="grid">${items.join("")}</div></section>`);
   }
   $("tl").innerHTML = secs.join("");
@@ -463,9 +527,11 @@ function lbUndo(redo) {
 
 /* ---------- 导出 ---------- */
 function openExport() {
-  if (!state.flat.length) { toast("当前筛选没有照片"); return; }
-  const size = state.flat.reduce((s, x) => s + (x.p.size || 0), 0);
-  $("ex-summary").textContent = `共 ${state.flat.length} 张,约 ${(size / 1e9).toFixed(2)} GB,来自 ${new Set(state.flat.map(x => x.day.path)).size} 天`;
+  const set = currentSet();
+  if (!set.length) { toast("没有可导出的照片"); return; }
+  const size = set.reduce((s, x) => s + (x.p.size || 0), 0);
+  const src = state.sel.size ? "选中" : "当前筛选";
+  $("ex-summary").textContent = `${src} 共 ${set.length} 张,约 ${(size / 1e9).toFixed(2)} GB,来自 ${new Set(set.map(x => x.day.path)).size} 天`;
   $("ex-dest").value = localStorage.getItem("ptg:dest") || (state.home + "/Pictures/成片");
   $("ex-bar").style.display = "none"; $("ex-log").textContent = "";
   $("ex-start").disabled = false;
@@ -479,7 +545,7 @@ $("ex-start").addEventListener("click", async () => {
   $("ex-start").disabled = true;
   $("ex-bar").style.display = "";
   try {
-    const paths = state.flat.map(x => x.day.path + "/" + x.p.name);
+    const paths = currentSet().map(x => x.day.path + "/" + x.p.name);
     const r = await api("/api/export", {paths, dest});
     const timer = setInterval(async () => {
       try {
@@ -527,6 +593,14 @@ function modalOpen() { return !!document.querySelector(".modal:not(.hidden)"); }
 
 /* ---------- 键盘 ---------- */
 addEventListener("keydown", e => {
+  if (ss.on) {
+    if (e.key === "Escape") { e.preventDefault(); stopSlideshow(); }
+    else if (e.code === "Space") { e.preventDefault(); ssPlayPause(); }
+    else if (e.code === "ArrowRight" || e.code === "KeyJ") { e.preventDefault(); go(1); }
+    else if (e.code === "ArrowLeft" || e.code === "KeyK") { e.preventDefault(); go(-1); }
+    ssPokeCtrl();
+    return;
+  }
   if (e.target instanceof HTMLInputElement) { if (e.key === "Escape") { e.target.blur(); closeModals(); } return; }
   if (modalOpen()) { if (e.key === "Escape") closeModals(); return; }
   const lbOn = state.lb >= 0;
@@ -551,6 +625,201 @@ addEventListener("keydown", e => {
   }
 });
 
+/* ---------- 选择 ---------- */
+let selAnchor = null;
+function pkey(day, p) { return day.path + "/" + p.name; }
+function refreshSel() {
+  for (const it of document.querySelectorAll(".it")) it.classList.toggle("sel", state.sel.has(it.dataset.key));
+  $("sel-n").textContent = state.sel.size;
+  $("seltools").classList.toggle("hidden", state.sel.size === 0);
+}
+function toggleSel(idx, ev) {
+  ev.stopPropagation();
+  if (ev.shiftKey && selAnchor !== null) rangeSel(selAnchor, idx);
+  else {
+    const it = state.flat[idx]; if (!it) return;
+    const k = pkey(it.day, it.p);
+    state.sel.has(k) ? state.sel.delete(k) : state.sel.add(k);
+    selAnchor = idx;
+  }
+  refreshSel();
+}
+function rangeSel(a, b) {
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  for (let i = lo; i <= hi; i++) { const it = state.flat[i]; if (it) state.sel.add(pkey(it.day, it.p)); }
+  selAnchor = b;
+}
+function tileClick(idx, ev) {
+  if (ev.shiftKey) { ev.preventDefault(); rangeSel(selAnchor === null ? idx : selAnchor, idx); refreshSel(); return; }
+  openLB(idx);
+}
+function selectAllFlat() { for (const it of state.flat) state.sel.add(pkey(it.day, it.p)); refreshSel(); }
+function selectDay(path) {
+  const day = state.days.find(d => d.path === path); if (!day) return;
+  for (const p of day.photos) if (matchPhoto(day, p)) state.sel.add(pkey(day, p));
+  refreshSel();
+}
+function clearSel() { state.sel.clear(); selAnchor = null; refreshSel(); }
+function currentSet() {                 // 选中优先(跨 filter 保留);否则当前筛选。按天分组连续,供 small shuffle
+  if (!state.sel.size) return state.flat.slice();
+  const out = [];
+  for (const day of state.days) for (const p of day.photos)
+    if (state.sel.has(pkey(day, p))) out.push({day, p});
+  return out;
+}
+$("st-play").onclick = () => startSlideshow();
+$("st-export").onclick = () => openExport();
+$("st-all").onclick = selectAllFlat;
+$("st-clear").onclick = clearSel;
+$("btn-play").onclick = () => startSlideshow();
+
+/* ---------- 幻灯片(含竖屏拼图) ---------- */
+const ss = { on: false, playing: false, animating: false, slides: [], sPos: 0, timer: null,
+             dwell: 4000, fade: 300, shuffle: "none", set: [], aspects: new Map() };
+const ssStage = () => $("ss-stage"), ssRow = () => $("ss-row");
+function ssKey(it) { return it.day.path + "/" + it.p.name; }
+function ssAspect(it) { return ss.aspects.get(ssKey(it)) || 1.5; }
+
+function measureAspects(items) {         // 从缩略图量方向(含 EXIF 转正),限并发
+  const todo = items.filter(it => !ss.aspects.has(ssKey(it)));
+  if (!todo.length) return Promise.resolve();
+  return new Promise(resolve => {
+    let i = 0, done = 0, active = 0;
+    const pump = () => {
+      while (active < 8 && i < todo.length) {
+        const it = todo[i++]; active++;
+        const im = new Image();
+        const fin = a => { ss.aspects.set(ssKey(it), a); active--; done++;
+                           $("ss-load").textContent = "准备中… " + done + "/" + todo.length;
+                           done >= todo.length ? resolve() : pump(); };
+        im.onload = () => fin((im.naturalWidth / im.naturalHeight) || 1.5);
+        im.onerror = () => fin(1.5);
+        im.src = "/thumb?path=" + enc(ssKey(it)) + "&w=480";
+      }
+    };
+    pump();
+  });
+}
+
+function applyShuffle(items, mode) {
+  const a = items.slice();
+  const shuf = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } };
+  if (mode === "big") { shuf(a); return a; }
+  if (mode === "small") {                // 天序不变,天内打乱(items 已按天连续)
+    const out = []; let i = 0;
+    while (i < a.length) { let j = i; while (j < a.length && a[j].day === a[i].day) j++;
+      const seg = a.slice(i, j); shuf(seg); out.push(...seg); i = j; }
+    return out;
+  }
+  return a;
+}
+
+function packAll(queue) {                 // 贪心装排:每张贴满屏高,凑满一横排;竖屏抽后面竖屏来凑
+  const slides = [], q = queue.slice();
+  const r = ssStage().getBoundingClientRect();
+  const H = r.height, GAP = Math.max(10, Math.round(r.width * 0.012));
+  const avail = r.width - 2 * GAP;        // 两侧至少留 GAP 的空隙
+  const wOf = it => H * ssAspect(it);
+  while (q.length) {
+    const slide = [q.shift()];
+    let used = wOf(slide[0]);
+    while (slide.length < 6) {
+      const rem = avail - used - GAP;      // 再放一张,先扣一条缝
+      if (rem <= 1) break;
+      let idx = -1;
+      for (let k = 0; k < Math.min(14, q.length); k++) if (wOf(q[k]) <= rem) { idx = k; break; }
+      if (idx === -1) break;
+      slide.push(q.splice(idx, 1)[0]);
+      used += GAP + wOf(slide[slide.length - 1]);
+    }
+    slides.push(slide);
+  }
+  return slides;
+}
+
+function renderSlide(items) {
+  const r = ssStage().getBoundingClientRect();
+  const H = r.height, GAP = Math.max(10, Math.round(r.width * 0.012));
+  const totalAspect = items.reduce((s, it) => s + ssAspect(it), 0);
+  const availW = r.width - 2 * GAP;
+  let imgH = H;                            // 默认贴满屏高;单张 pano/超宽则整排缩放 letterbox
+  const rowW = imgH * totalAspect + GAP * (items.length - 1);
+  if (rowW > availW) imgH = (availW - GAP * (items.length - 1)) / totalAspect;
+  const row = ssRow();
+  row.style.gap = GAP + "px";
+  row.innerHTML = items.map(it =>
+    `<img src="/img?path=${enc(ssKey(it))}" style="height:${Math.round(imgH)}px;width:${Math.round(imgH * ssAspect(it))}px">`).join("");
+}
+
+function preloadSlide(pos) {
+  const s = ss.slides[(pos % ss.slides.length + ss.slides.length) % ss.slides.length]; if (!s) return;
+  for (const it of s) { const im = new Image(); im.src = "/img?path=" + enc(ssKey(it)); }
+}
+
+async function startSlideshow() {
+  const set = currentSet();
+  if (!set.length) { toast("没有可播放的照片"); return; }
+  ss.on = true; ss.set = set;
+  $("ss").classList.remove("hidden");
+  $("ss-load").textContent = "准备中…"; $("ss-load").classList.remove("hidden");
+  const el = $("ss");
+  if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+  await new Promise(r => setTimeout(r, 80));    // 等全屏尺寸稳定
+  await measureAspects(set);
+  rebuildSlides();
+  $("ss-load").classList.add("hidden");
+  ss.playing = true; $("ss-play").textContent = "⏸";
+  showSlide(0, false); preloadSlide(1); scheduleNext();
+  ssPokeCtrl();
+}
+function rebuildSlides() { ss.slides = packAll(applyShuffle(ss.set, ss.shuffle)); ss.sPos = 0; }
+function showSlide(pos, fade) {
+  if (!ss.slides.length) return;
+  ss.sPos = (pos % ss.slides.length + ss.slides.length) % ss.slides.length;
+  renderSlide(ss.slides[ss.sPos]);
+  $("ss-pos").textContent = (ss.sPos + 1) + " / " + ss.slides.length;
+  ssStage().style.opacity = 1;
+}
+function go(dir) {
+  if (ss.animating || !ss.on) return;
+  ss.animating = true; clearTimeout(ss.timer);
+  ssStage().style.opacity = 0;
+  setTimeout(() => {
+    showSlide(ss.sPos + dir, true); preloadSlide(ss.sPos + 1);
+    ss.animating = false;
+    if (ss.playing) scheduleNext();
+  }, ss.fade);
+}
+function scheduleNext() { clearTimeout(ss.timer); if (ss.playing && ss.on) ss.timer = setTimeout(() => go(1), ss.dwell); }
+function ssPlayPause() {
+  ss.playing = !ss.playing; $("ss-play").textContent = ss.playing ? "⏸" : "▶";
+  ss.playing ? scheduleNext() : clearTimeout(ss.timer);
+}
+function stopSlideshow() {
+  ss.on = false; ss.playing = false; clearTimeout(ss.timer);
+  $("ss").classList.add("hidden"); ssRow().innerHTML = "";
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+}
+let ssHideTimer = null;
+function ssPokeCtrl() { $("ss-ctrl").classList.remove("hide"); clearTimeout(ssHideTimer); ssHideTimer = setTimeout(() => { if (ss.playing) $("ss-ctrl").classList.add("hide"); }, 2600); }
+$("ss-prev").onclick = () => go(-1);
+$("ss-next").onclick = () => go(1);
+$("ss-play").onclick = ssPlayPause;
+$("ss-exit").onclick = stopSlideshow;
+$("ss").addEventListener("mousemove", ssPokeCtrl);
+for (const b of document.querySelectorAll("#ss-shuf button")) b.onclick = () => {
+  ss.shuffle = b.dataset.s;
+  for (const x of document.querySelectorAll("#ss-shuf button")) x.classList.toggle("on", x === b);
+  rebuildSlides(); showSlide(0, false); preloadSlide(1); scheduleNext();
+};
+for (const b of document.querySelectorAll("#ss-speed button")) b.onclick = () => {
+  ss.dwell = +b.dataset.d;
+  for (const x of document.querySelectorAll("#ss-speed button")) x.classList.toggle("on", x === b);
+  scheduleNext();
+};
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && ss.on) stopSlideshow(); });
+addEventListener("resize", () => { if (ss.on && ss.slides[ss.sPos]) renderSlide(ss.slides[ss.sPos]); });
+
 /* ---------- 页面切换器 ---------- */
 function wireNav() {   // 「打标·画廊·工具」切换器带上当前 root(各页 localStorage key 不同,需显式传)
   const root = state.root || localStorage.getItem("ptg:root") || new URLSearchParams(location.search).get("root");
@@ -567,6 +836,7 @@ function wireNav() {   // 「打标·画廊·工具」切换器带上当前 root
   const root = params.get("root") || localStorage.getItem("ptg:root");
   if (root) { toast("加载中…", 60000); await setRoot(root); toast("完成 ✓"); }
   else openRootModal();
+  if (params.get("ss") === "1" && state.flat.length) startSlideshow();   // 深链直接进幻灯片
 })();
 </script>
 </body>
