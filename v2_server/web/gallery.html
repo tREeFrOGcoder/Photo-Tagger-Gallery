@@ -90,6 +90,7 @@
   #ss-stage{flex:1;position:relative;overflow:hidden;opacity:1;transition:opacity var(--fade) ease}
   #ss-row{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
   #ss-row img{display:block;object-fit:contain}
+  #ss-row.fill img{object-fit:cover}
   #ss-load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font-size:15px;z-index:4}
   #ss-load.hidden{display:none}
   #ss-ctrl{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;gap:12px;align-items:center;background:rgba(20,20,22,.82);border:1px solid var(--line);border-radius:99px;padding:7px 18px;z-index:5;transition:opacity .3s;font-size:13px}
@@ -175,11 +176,15 @@
       <button data-s="small">按日乱</button>
       <button data-s="big">全乱</button>
     </span>
+    <span class="seg" id="ss-fit">
+      <button data-f="0" class="on">适应</button>
+      <button data-f="1">铺满</button>
+    </span>
     <span class="seg" id="ss-speed">
       <button data-d="2000">2s</button>
-      <button data-d="4000" class="on">4s</button>
+      <button data-d="4000">4s</button>
       <button data-d="6000">6s</button>
-      <button data-d="8000">8s</button>
+      <button data-d="8000" class="on">8s</button>
     </span>
     <button id="ss-exit" title="退出 Esc">✕</button>
   </div>
@@ -675,10 +680,11 @@ $("btn-play").onclick = () => startSlideshow();
 
 /* ---------- 幻灯片(含竖屏拼图) ---------- */
 const ss = { on: false, playing: false, animating: false, slides: [], sPos: 0, timer: null,
-             dwell: 4000, fade: 300, shuffle: "none", set: [], aspects: new Map() };
+             dwell: 8000, fade: 300, shuffle: "none", fill: false, set: [], aspects: new Map() };
 const ssStage = () => $("ss-stage"), ssRow = () => $("ss-row");
 function ssKey(it) { return it.day.path + "/" + it.p.name; }
 function ssAspect(it) { return ss.aspects.get(ssKey(it)) || 1.5; }
+function ssGap(w) { return Math.max(4, Math.round(w * 0.005)); }   // 照片间/两侧黑缝(比之前小不少)
 
 function measureAspects(items) {         // 从缩略图量方向(含 EXIF 转正),限并发
   const todo = items.filter(it => !ss.aspects.has(ssKey(it)));
@@ -717,7 +723,7 @@ function applyShuffle(items, mode) {
 function packAll(queue) {                 // 贪心装排:每张贴满屏高,凑满一横排;竖屏抽后面竖屏来凑
   const slides = [], q = queue.slice();
   const r = ssStage().getBoundingClientRect();
-  const H = r.height, GAP = Math.max(10, Math.round(r.width * 0.012));
+  const H = r.height, GAP = ssGap(r.width);
   const avail = r.width - 2 * GAP;        // 两侧至少留 GAP 的空隙
   const wOf = it => H * ssAspect(it);
   while (q.length) {
@@ -739,16 +745,30 @@ function packAll(queue) {                 // 贪心装排:每张贴满屏高,凑
 
 function renderSlide(items) {
   const r = ssStage().getBoundingClientRect();
-  const H = r.height, GAP = Math.max(10, Math.round(r.width * 0.012));
-  const totalAspect = items.reduce((s, it) => s + ssAspect(it), 0);
-  const availW = r.width - 2 * GAP;
-  let imgH = H;                            // 默认贴满屏高;单张 pano/超宽则整排缩放 letterbox
-  const rowW = imgH * totalAspect + GAP * (items.length - 1);
-  if (rowW > availW) imgH = (availW - GAP * (items.length - 1)) / totalAspect;
+  const H = r.height, GAP = ssGap(r.width);
+  const totalAspect = items.reduce((s, it) => s + ssAspect(it), 0) || 1;
   const row = ssRow();
   row.style.gap = GAP + "px";
-  row.innerHTML = items.map(it =>
-    `<img src="/img?path=${enc(ssKey(it))}" style="height:${Math.round(imgH)}px;width:${Math.round(imgH * ssAspect(it))}px">`).join("");
+  row.classList.toggle("fill", ss.fill);
+  if (ss.fill) {                           // 铺满:每张按长宽比分到一份屏宽,cover 裁剪填满,仅留缝隙
+    const availW = r.width - GAP * (items.length - 1);
+    row.innerHTML = items.map(it =>
+      `<img src="/img?path=${enc(ssKey(it))}" style="width:${Math.round(ssAspect(it) / totalAspect * availW)}px;height:${Math.round(H)}px">`).join("");
+  } else {                                 // 适应:贴满屏高、留侧边;单张 pano/超宽则整排缩放 letterbox
+    const availW = r.width - 2 * GAP;
+    let imgH = H;
+    const rowW = imgH * totalAspect + GAP * (items.length - 1);
+    if (rowW > availW) imgH = (availW - GAP * (items.length - 1)) / totalAspect;
+    row.innerHTML = items.map(it =>
+      `<img src="/img?path=${enc(ssKey(it))}" style="height:${Math.round(imgH)}px;width:${Math.round(imgH * ssAspect(it))}px">`).join("");
+  }
+  return slideImagesReady(1500);
+}
+function slideImagesReady(ms) {             // 等这屏图片解码就位,淡入前调用,避免"淡入到空屏再啪一下冒出来"
+  const imgs = [...ssRow().querySelectorAll("img")];
+  const ps = imgs.map(im => (im.complete && im.naturalWidth) ? Promise.resolve()
+    : new Promise(res => { im.onload = im.onerror = res; }));
+  return Promise.race([Promise.all(ps), new Promise(res => setTimeout(res, ms))]);
 }
 
 function preloadSlide(pos) {
@@ -769,23 +789,26 @@ async function startSlideshow() {
   rebuildSlides();
   $("ss-load").classList.add("hidden");
   ss.playing = true; $("ss-play").textContent = "⏸";
-  showSlide(0, false); preloadSlide(1); scheduleNext();
-  ssPokeCtrl();
+  ssStage().style.opacity = 0;
+  await showSlide(0);
+  ssStage().style.opacity = 1;
+  preloadSlide(1); scheduleNext(); ssPokeCtrl();
 }
 function rebuildSlides() { ss.slides = packAll(applyShuffle(ss.set, ss.shuffle)); ss.sPos = 0; }
-function showSlide(pos, fade) {
-  if (!ss.slides.length) return;
+function showSlide(pos) {                   // 只布局 + 等图片就位(不碰透明度),返回 Promise
+  if (!ss.slides.length) return Promise.resolve();
   ss.sPos = (pos % ss.slides.length + ss.slides.length) % ss.slides.length;
-  renderSlide(ss.slides[ss.sPos]);
   $("ss-pos").textContent = (ss.sPos + 1) + " / " + ss.slides.length;
-  ssStage().style.opacity = 1;
+  return renderSlide(ss.slides[ss.sPos]);
 }
 function go(dir) {
   if (ss.animating || !ss.on) return;
   ss.animating = true; clearTimeout(ss.timer);
-  ssStage().style.opacity = 0;
-  setTimeout(() => {
-    showSlide(ss.sPos + dir, true); preloadSlide(ss.sPos + 1);
+  ssStage().style.opacity = 0;                       // 淡出到全黑
+  setTimeout(async () => {
+    await showSlide(ss.sPos + dir);                   // 全黑时布局 + 等图解码
+    ssStage().style.opacity = 1;                      // 图已就位再淡入
+    preloadSlide(ss.sPos + 1);
     ss.animating = false;
     if (ss.playing) scheduleNext();
   }, ss.fade);
@@ -810,12 +833,17 @@ $("ss").addEventListener("mousemove", ssPokeCtrl);
 for (const b of document.querySelectorAll("#ss-shuf button")) b.onclick = () => {
   ss.shuffle = b.dataset.s;
   for (const x of document.querySelectorAll("#ss-shuf button")) x.classList.toggle("on", x === b);
-  rebuildSlides(); showSlide(0, false); preloadSlide(1); scheduleNext();
+  rebuildSlides(); showSlide(0); preloadSlide(1); scheduleNext();
 };
 for (const b of document.querySelectorAll("#ss-speed button")) b.onclick = () => {
   ss.dwell = +b.dataset.d;
   for (const x of document.querySelectorAll("#ss-speed button")) x.classList.toggle("on", x === b);
   scheduleNext();
+};
+for (const b of document.querySelectorAll("#ss-fit button")) b.onclick = () => {
+  ss.fill = b.dataset.f === "1";
+  for (const x of document.querySelectorAll("#ss-fit button")) x.classList.toggle("on", x === b);
+  if (ss.on) renderSlide(ss.slides[ss.sPos]);
 };
 document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && ss.on) stopSlideshow(); });
 addEventListener("resize", () => { if (ss.on && ss.slides[ss.sPos]) renderSlide(ss.slides[ss.sPos]); });
@@ -836,7 +864,7 @@ function wireNav() {   // 「打标·画廊·工具」切换器带上当前 root
   const root = params.get("root") || localStorage.getItem("ptg:root");
   if (root) { toast("加载中…", 60000); await setRoot(root); toast("完成 ✓"); }
   else openRootModal();
-  if (params.get("ss") === "1" && state.flat.length) startSlideshow();   // 深链直接进幻灯片
+  if (params.get("ss") === "1" && state.flat.length) { ss.fill = params.get("fill") === "1"; startSlideshow(); }   // 深链直接进幻灯片(&fill=1 铺满)
 })();
 </script>
 </body>
