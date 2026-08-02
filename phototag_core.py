@@ -30,7 +30,7 @@ SKIP_DIR_NAMES = {"_trash_bin", "node_modules", "Library"}
 DIMS = ("status", "type", "quality")
 VALID_TAGS = {
     "status": {"sooc", "edit", "trash"},
-    "type": {"scenery", "animal", "portrait", "insect"},
+    "type": {"scenery", "animal", "portrait", "insect", "food"},
     "quality": {"best", "normal"},
 }
 # LrC 色标:大修=黄、直出=绿、废片=红

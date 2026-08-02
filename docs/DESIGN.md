@@ -70,7 +70,7 @@ Sony A7V/
 | status | `sooc` | 直出 | straight-out-of-camera,JPG 即成片(RAW 以后可清) |
 | status | `edit` | 大修 | 保留 RAW,进 Lightroom 修;修完导出的新文件再单独打 tag |
 | status | `trash` | 废片 | JPG+RAW 都该清理(由 sweep 工具**移动**到回收目录,绝不直接删) |
-| type | `scenery` / `animal` / `portrait` / `insect` | 风景/动物/人像/昆虫 | 昆虫单列不归入动物(处理/分享策略不同) |
+| type | `scenery` / `animal` / `portrait` / `insect` / `food` | 风景/动物/人像/昆虫/美食 | 昆虫、美食均单列(处理/分享策略不同) |
 | quality | `best` / `normal` | 绝美/普通 | 绝美与是否直出无关 |
 
 规则:

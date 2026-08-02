@@ -271,6 +271,9 @@ def main():
         check("绝不覆盖已有 xmp", open(pre).read() == "LR-OWNED")
 
         print("== 工具:core 四操作 ==")
+        check("food 为合法类型(第5类型)", "food" in core.VALID_TAGS["type"] and
+              core.clean_tags({"type": "food"}).get("type") == "food" and
+              core.clean_tags({"type": "nope"}) == {})
         src2, da, db = build_tools_fixture(tmp)
 
         picks3 = os.path.join(tmp, "cheng")
