@@ -87,7 +87,7 @@
   /* ---- 幻灯片 ---- */
   #ss{position:fixed;inset:0;background:#000;z-index:80;display:flex;flex-direction:column;--fade:300ms}
   #ss.hidden{display:none}
-  #ss-stage{flex:1;position:relative;overflow:hidden;opacity:1;transition:opacity var(--fade) ease}
+  #ss-stage{flex:1;position:relative;overflow:hidden;opacity:1}
   #ss-row{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
   #ss-row img{display:block;object-fit:contain}
   #ss-row.fill img{object-fit:cover}
@@ -791,7 +791,7 @@ async function startSlideshow() {
   ss.playing = true; $("ss-play").textContent = "⏸";
   ssStage().style.opacity = 0;
   await showSlide(0);
-  ssStage().style.opacity = 1;
+  ssFade(1);
   preloadSlide(1); scheduleNext(); ssPokeCtrl();
 }
 function rebuildSlides() { ss.slides = packAll(applyShuffle(ss.set, ss.shuffle)); ss.sPos = 0; }
@@ -801,17 +801,23 @@ function showSlide(pos) {                   // 只布局 + 等图片就位(不�
   $("ss-pos").textContent = (ss.sPos + 1) + " / " + ss.slides.length;
   return renderSlide(ss.slides[ss.sPos]);
 }
+function ssFade(target) {                             // 用 WAAPI 显式补间透明度(不依赖 CSS 过渡的重触发时机)
+  const st = ssStage();
+  const from = parseFloat(getComputedStyle(st).opacity) || 0;
+  st.style.opacity = target;                          // 定稿值(动画结束后落到这里)
+  return st.animate([{opacity: from}, {opacity: target}], {duration: ss.fade, easing: "ease"});
+}
 function go(dir) {
   if (ss.animating || !ss.on) return;
   ss.animating = true; clearTimeout(ss.timer);
-  ssStage().style.opacity = 0;                       // 淡出到全黑
-  setTimeout(async () => {
-    await showSlide(ss.sPos + dir);                   // 全黑时布局 + 等图解码
-    ssStage().style.opacity = 1;                      // 图已就位再淡入
+  ssFade(0).onfinish = async () => {                  // 淡出到全黑
+    if (!ss.on) { ss.animating = false; return; }
+    await showSlide(ss.sPos + dir);                   // 全黑时布局 + 等图解码就位
+    ssFade(1);                                        // 图已就位再淡入
     preloadSlide(ss.sPos + 1);
     ss.animating = false;
     if (ss.playing) scheduleNext();
-  }, ss.fade);
+  };
 }
 function scheduleNext() { clearTimeout(ss.timer); if (ss.playing && ss.on) ss.timer = setTimeout(() => go(1), ss.dwell); }
 function ssPlayPause() {
@@ -864,7 +870,11 @@ function wireNav() {   // 「打标·画廊·工具」切换器带上当前 root
   const root = params.get("root") || localStorage.getItem("ptg:root");
   if (root) { toast("加载中…", 60000); await setRoot(root); toast("完成 ✓"); }
   else openRootModal();
-  if (params.get("ss") === "1" && state.flat.length) { ss.fill = params.get("fill") === "1"; startSlideshow(); }   // 深链直接进幻灯片(&fill=1 铺满)
+  if (params.get("ss") === "1" && state.flat.length) {   // 深链直接进幻灯片(&fill=1 铺满,&fade=ms 调淡入淡出)
+    ss.fill = params.get("fill") === "1";
+    const f = parseInt(params.get("fade")); if (!isNaN(f)) ss.fade = Math.max(0, f);
+    startSlideshow();
+  }
 })();
 </script>
 </body>
