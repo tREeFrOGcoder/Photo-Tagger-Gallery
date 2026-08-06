@@ -171,6 +171,10 @@ def main():
         check("生成缩略图", os.path.exists(out) and os.path.getsize(out) > 0)
         out2, key2 = serve.ensure_thumb(os.path.join(d1, "DSC00002.JPG"), 240)
         check("缓存命中同 key", out == out2 and key == key2)
+        # 幻灯片显示档(大尺寸)必须被允许,不能被 whitelist 降级到 480(否则全屏播放糊)
+        out_big, key_big = serve.ensure_thumb(os.path.join(d1, "DSC00002.JPG"), 2560)
+        _, key_480 = serve.ensure_thumb(os.path.join(d1, "DSC00002.JPG"), 480)
+        check("显示档 2560 不被降级(key≠480 档)", 2560 in serve.THUMB_WIDTHS and os.path.getsize(out_big) > 0 and key_big != key_480)
 
         print("== 导出 ==")
         dest = os.path.join(tmp, "picks")

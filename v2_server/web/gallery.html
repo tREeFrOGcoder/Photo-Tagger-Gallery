@@ -694,11 +694,15 @@ $("btn-play").onclick = () => startSlideshow();
 
 /* ---------- 幻灯片(含竖屏拼图) ---------- */
 const ss = { on: false, playing: false, animating: false, locked: true, slides: [], sPos: 0, timer: null,
-             hintTimer: null, dwell: 8000, fade: 300, shuffle: "none", fill: false, set: [], aspects: new Map() };
+             hintTimer: null, dwell: 8000, fade: 300, shuffle: "none", fill: false, set: [], aspects: new Map(), imgW: 2560 };
 const ssStage = () => $("ss-stage"), ssRow = () => $("ss-row");
 function ssKey(it) { return it.day.path + "/" + it.p.name; }
 function ssAspect(it) { return ss.aspects.get(ssKey(it)) || 1.5; }
 function ssGap(w) { return Math.max(4, Math.round(w * 0.005)); }   // 照片间/两侧黑缝(比之前小不少)
+// 显示用图宽:按屏幕长边×dpr 取一档(1600/2560/3840),够清晰但只需解 ~2-8MP 而非 24MP 原图。
+// 关键性能点:全屏拼图一屏最多 6 张,若用 /img 原图,单张解码 ~254ms、一屏 ~1.5s,而解码撞进淡入那帧 → 长黑屏+淡入被跳过("闪现")。改档后单张 ~13-30ms。
+function ssBucket() { const need = Math.round(Math.max(screen.width, screen.height) * (devicePixelRatio || 1)); return need <= 1600 ? 1600 : need <= 2560 ? 2560 : 3840; }
+function ssImg(it) { return "/thumb?path=" + enc(ssKey(it)) + "&w=" + ss.imgW; }
 
 function measureAspects(items) {         // 从缩略图量方向(含 EXIF 转正),限并发
   const todo = items.filter(it => !ss.aspects.has(ssKey(it)));
@@ -767,27 +771,28 @@ function renderSlide(items) {
   if (ss.fill) {                           // 铺满:每张按长宽比分到一份屏宽,cover 裁剪填满,仅留缝隙
     const availW = r.width - GAP * (items.length - 1);
     row.innerHTML = items.map(it =>
-      `<img src="/img?path=${enc(ssKey(it))}" style="width:${Math.round(ssAspect(it) / totalAspect * availW)}px;height:${Math.round(H)}px">`).join("");
+      `<img src="${ssImg(it)}" style="width:${Math.round(ssAspect(it) / totalAspect * availW)}px;height:${Math.round(H)}px">`).join("");
   } else {                                 // 适应:贴满屏高、留侧边;单张 pano/超宽则整排缩放 letterbox
     const availW = r.width - 2 * GAP;
     let imgH = H;
     const rowW = imgH * totalAspect + GAP * (items.length - 1);
     if (rowW > availW) imgH = (availW - GAP * (items.length - 1)) / totalAspect;
     row.innerHTML = items.map(it =>
-      `<img src="/img?path=${enc(ssKey(it))}" style="height:${Math.round(imgH)}px;width:${Math.round(imgH * ssAspect(it))}px">`).join("");
+      `<img src="${ssImg(it)}" style="height:${Math.round(imgH)}px;width:${Math.round(imgH * ssAspect(it))}px">`).join("");
   }
   return slideImagesReady(1500);
 }
-function slideImagesReady(ms) {             // 等这屏图片解码就位,淡入前调用,避免"淡入到空屏再啪一下冒出来"
+function slideImagesReady(ms) {             // 等这屏图片"真正解码就位"(decode() 而非 onload):
+  // onload 只保证字节到位,解码(位图)仍是懒的、会拖到首帧绘制=淡入那一帧 → 主线程卡住把淡入吃掉成"闪现"。
+  // 用 decode() 把位图先解好,再淡入,淡入就和淡出一样顺滑;ms 是坏图兜底上限,不让整场卡死。
   const imgs = [...ssRow().querySelectorAll("img")];
-  const ps = imgs.map(im => (im.complete && im.naturalWidth) ? Promise.resolve()
-    : new Promise(res => { im.onload = im.onerror = res; }));
-  return Promise.race([Promise.all(ps), new Promise(res => setTimeout(res, ms))]);
+  const decoded = Promise.all(imgs.map(im => im.decode().catch(() => {})));
+  return Promise.race([decoded, new Promise(res => setTimeout(res, ms))]);
 }
 
-function preloadSlide(pos) {
+function preloadSlide(pos) {                // 下一屏提前取字节 + 解码预热,藏住切换时的解码开销
   const s = ss.slides[(pos % ss.slides.length + ss.slides.length) % ss.slides.length]; if (!s) return;
-  for (const it of s) { const im = new Image(); im.src = "/img?path=" + enc(ssKey(it)); }
+  for (const it of s) { const im = new Image(); im.src = ssImg(it); im.decode().catch(() => {}); }
 }
 
 async function startSlideshow() {
@@ -799,14 +804,16 @@ async function startSlideshow() {
   const el = $("ss");
   if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   await new Promise(r => setTimeout(r, 80));    // 等全屏尺寸稳定
+  ss.imgW = ssBucket();                         // 全屏后按当前显示器长边定显示图档
   await measureAspects(set);
   rebuildSlides();
-  $("ss-load").classList.add("hidden");
   ss.playing = true; $("ss-play").textContent = "⏸";
   ssStage().style.opacity = 0;
-  await showSlide(0);
-  ssFade(1);
-  preloadSlide(1); scheduleNext();
+  await showSlide(0);                            // 布局 + 等解码就位(首播可能要现生成大图缩略图,期间保留"准备中…")
+  $("ss-load").classList.add("hidden");
+  preloadSlide(1);
+  await ssFade(1).finished;                      // 像素已就位再淡入
+  scheduleNext();
   ss.locked = true; hideToolbar(); flashHint();
 }
 function rebuildSlides() { ss.slides = packAll(applyShuffle(ss.set, ss.shuffle)); ss.sPos = 0; }
@@ -822,17 +829,16 @@ function ssFade(target) {                             // 用 WAAPI 显式补间�
   st.style.opacity = target;                          // 定稿值(动画结束后落到这里)
   return st.animate([{opacity: from}, {opacity: target}], {duration: ss.fade, easing: "ease"});
 }
-function go(dir) {
+async function go(dir) {
   if (ss.animating || !ss.on) return;
   ss.animating = true; clearTimeout(ss.timer);
-  ssFade(0).onfinish = async () => {                  // 淡出到全黑
-    if (!ss.on) { ss.animating = false; return; }
-    await showSlide(ss.sPos + dir);                   // 全黑时布局 + 等图解码就位
-    ssFade(1);                                        // 图已就位再淡入
-    preloadSlide(ss.sPos + 1);
-    ss.animating = false;
-    if (ss.playing) scheduleNext();
-  };
+  await ssFade(0).finished;                           // 淡出到全黑(当前屏已解码 → 顺滑)
+  if (!ss.on) { ss.animating = false; return; }
+  await showSlide(ss.sPos + dir);                      // 全黑时布局 + 等真正解码就位(屏宽图,快)
+  preloadSlide(ss.sPos + 1);                           // 顺手把下一屏解码预热,藏住下次切换的解码
+  await ssFade(1).finished;                            // 像素已就位再淡入 → 与淡出等长、顺滑
+  ss.animating = false;
+  if (ss.playing) scheduleNext();                      // 停留从"整屏完全显示"起算
 }
 function scheduleNext() { clearTimeout(ss.timer); if (ss.playing && ss.on) ss.timer = setTimeout(() => go(1), ss.dwell); }
 function ssPlayPause() {

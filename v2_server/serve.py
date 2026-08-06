@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.dirname(APP_DIR))   # 仓库根,便于 import 共享�
 import phototag_core as core  # noqa: E402
 
 ALLOWED_PREFIXES = ["/Volumes", HOME]
-THUMB_WIDTHS = (240, 480, 960)
+THUMB_WIDTHS = (240, 480, 960, 1600, 2560, 3840)   # 大档给全屏幻灯片用(按屏幕长边取,避免解 24MP 原图)
 DATE_RE = re.compile(r"(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})")
 # tag 词表 / 文件名 / 跳过目录统一取自 phototag_core(单一来源,避免漂移)
 TAGFILE = core.TAGFILE
