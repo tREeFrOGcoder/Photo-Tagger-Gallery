@@ -102,6 +102,11 @@
   #ss-ctrl .seg{display:flex;gap:1px;background:var(--bg3);border-radius:7px;padding:2px}
   #ss-ctrl .seg button{border-radius:5px;font-size:12px;padding:2px 9px;color:var(--fg2)}
   #ss-ctrl .seg button.on{background:var(--acc);color:#fff}
+  #ss-speed .custom{display:inline-flex;align-items:center;gap:1px;border-radius:5px;padding:0 7px 0 3px;color:var(--fg2);cursor:text}
+  #ss-speed .custom.on{background:var(--acc);color:#fff}
+  #ss-custom{width:56px;background:transparent;border:none;color:inherit;font:inherit;font-size:12px;padding:3px 2px;text-align:right;outline:none;-moz-appearance:textfield}
+  #ss-custom::-webkit-outer-spin-button,#ss-custom::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  #ss-custom::placeholder{color:var(--fg2)}
   #ss-ctrl .lbl{color:var(--fg2);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
 </style>
 </head>
@@ -188,7 +193,7 @@
       <button data-d="2000">2s</button>
       <button data-d="8000" class="on">8s</button>
       <button data-d="30000">30s</button>
-      <button data-d="custom">自定义</button>
+      <span class="custom" id="ss-custom-wrap"><input id="ss-custom" type="number" min="0.5" step="0.5" placeholder="自定义">s</span>
     </span>
     <button id="ss-lock" title="锁定并回全屏">🔒</button>
     <button id="ss-exit" title="退出">✕</button>
@@ -604,6 +609,7 @@ function modalOpen() { return !!document.querySelector(".modal:not(.hidden)"); }
 /* ---------- 键盘 ---------- */
 addEventListener("keydown", e => {
   if (ss.on) {
+    if (e.target instanceof HTMLInputElement) { if (e.key === "Escape") e.target.blur(); return; }   // 在自定义输入框里打字不被抢
     if (e.key === "Escape") {
       if (document.fullscreenElement) return;                    // 全屏时 Esc 交给浏览器退全屏 → fullscreenchange 解锁
       e.preventDefault();
@@ -851,18 +857,14 @@ for (const b of document.querySelectorAll("#ss-shuf button")) b.onclick = () => 
   for (const x of document.querySelectorAll("#ss-shuf button")) x.classList.toggle("on", x === b);
   rebuildSlides(); showSlide(0); preloadSlide(1); scheduleNext();
 };
-for (const b of document.querySelectorAll("#ss-speed button")) b.onclick = () => {
-  if (b.dataset.d === "custom") {
-    const v = parseFloat(prompt("每张停留秒数(可小数):", Math.round(ss.dwell / 1000)));
-    if (isNaN(v) || v <= 0) return;
-    ss.dwell = Math.round(v * 1000);
-    b.textContent = v + "s ✎";
-  } else {
-    ss.dwell = +b.dataset.d;
-  }
-  for (const x of document.querySelectorAll("#ss-speed button")) x.classList.toggle("on", x === b);
-  scheduleNext();
-};
+function ssSpeedActive(el) { for (const x of $("ss-speed").children) x.classList.toggle("on", x === el); }
+for (const b of document.querySelectorAll("#ss-speed button")) b.onclick = () => { ss.dwell = +b.dataset.d; ssSpeedActive(b); scheduleNext(); };
+$("ss-custom-wrap").onclick = () => $("ss-custom").focus();
+$("ss-custom").addEventListener("change", () => {   // 内联自定义秒数,输入即生效并高亮
+  const v = parseFloat($("ss-custom").value);
+  if (isNaN(v) || v <= 0) { $("ss-custom").value = ""; return; }
+  ss.dwell = Math.round(v * 1000); ssSpeedActive($("ss-custom-wrap")); scheduleNext();
+});
 for (const b of document.querySelectorAll("#ss-fit button")) b.onclick = () => {
   ss.fill = b.dataset.f === "1";
   for (const x of document.querySelectorAll("#ss-fit button")) x.classList.toggle("on", x === b);
