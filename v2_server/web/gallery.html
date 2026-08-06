@@ -186,9 +186,9 @@
     </span>
     <span class="seg" id="ss-speed">
       <button data-d="2000">2s</button>
-      <button data-d="4000">4s</button>
-      <button data-d="6000">6s</button>
       <button data-d="8000" class="on">8s</button>
+      <button data-d="30000">30s</button>
+      <button data-d="custom">自定义</button>
     </span>
     <button id="ss-lock" title="锁定并回全屏">🔒</button>
     <button id="ss-exit" title="退出">✕</button>
@@ -852,7 +852,14 @@ for (const b of document.querySelectorAll("#ss-shuf button")) b.onclick = () => 
   rebuildSlides(); showSlide(0); preloadSlide(1); scheduleNext();
 };
 for (const b of document.querySelectorAll("#ss-speed button")) b.onclick = () => {
-  ss.dwell = +b.dataset.d;
+  if (b.dataset.d === "custom") {
+    const v = parseFloat(prompt("每张停留秒数(可小数):", Math.round(ss.dwell / 1000)));
+    if (isNaN(v) || v <= 0) return;
+    ss.dwell = Math.round(v * 1000);
+    b.textContent = v + "s ✎";
+  } else {
+    ss.dwell = +b.dataset.d;
+  }
   for (const x of document.querySelectorAll("#ss-speed button")) x.classList.toggle("on", x === b);
   scheduleNext();
 };
