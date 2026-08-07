@@ -4,7 +4,7 @@
 
 真正逻辑在仓库根的 phototag_core;本文件只负责解析命令行与打印。
 
-    python3 collect_picks.py --root "/Volumes/My Book/Sony A7V" --dest ~/Pictures/成片 --where status=sooc
+    python3 collect_picks.py --root "/path/to/photos" --dest ~/Pictures/成片 --where status=sooc
     python3 collect_picks.py --root ... --dest ... --where status=sooc quality=best --apply
     # 值可用逗号表示"或",none 表示"未打":--where status=sooc,edit  /  --where quality=none
 

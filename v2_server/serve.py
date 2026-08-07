@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """phototag v2 本地服务器(仅 Python 标准库,macOS 缩略图走 sips)。
 
-    python3 serve.py --root "/Volumes/ZTSSD/Sony A7V" [--port 8787] [--open]
+    python3 serve.py --root "/path/to/photos" [--port 8787] [--open]
 
 只绑定 127.0.0.1;所有文件访问限制在 /Volumes 与 $HOME 之下。
 tag 存储:每个天文件夹一个 phototags.json(原子写 + .bak 备份 + 损坏自愈),
@@ -250,10 +250,9 @@ def list_roots():
         for e in sorted(os.listdir("/Volumes")):
             if e.startswith(".") or e == "Macintosh HD":
                 continue
-            for sub in ("Sony A7V", ""):
-                cand = os.path.join("/Volumes", e, sub) if sub else os.path.join("/Volumes", e)
-                if os.path.isdir(cand):
-                    add(cand, (e + "/" + sub).rstrip("/"))
+            cand = os.path.join("/Volumes", e)
+            if os.path.isdir(cand):
+                add(cand, e)
     except OSError:
         pass
     for d in ("~/Pictures/成片", "~/Pictures", "~/Desktop", "~/Downloads"):
@@ -661,12 +660,7 @@ class Handler(BaseHTTPRequestHandler):
 def main(argv=None):
     global DEFAULT_ROOT, VERBOSE
     ap = argparse.ArgumentParser(description="phototag v2 server")
-    default_root = os.path.join(HOME, "Pictures")
-    for cand in ("/Volumes/My Book/Sony A7V", "/Volumes/ZTSSD/Sony A7V",
-                 "/Volumes/ZTSSD/Sony 6300", "/Volumes/My Book/Sony 6300"):
-        if os.path.isdir(cand):
-            default_root = cand
-            break
+    default_root = os.path.join(HOME, "Pictures")   # 不带 --root 时的初始值;界面里可换(挂载盘会列在快捷根里)
     ap.add_argument("--root", default=default_root, help="默认照片根目录")
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--open", action="store_true", help="启动后自动打开浏览器")

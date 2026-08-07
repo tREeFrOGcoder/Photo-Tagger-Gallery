@@ -5,8 +5,8 @@
 
 真正逻辑在仓库根的 phototag_core;本文件只负责解析命令行与打印。
 
-    python3 sweep_trash.py --root "/Volumes/My Book/Sony A7V"            # dry-run,只打印
-    python3 sweep_trash.py --root "/Volumes/My Book/Sony A7V" --apply    # 真的移动
+    python3 sweep_trash.py --root "/path/to/photos"            # dry-run,只打印
+    python3 sweep_trash.py --root "/path/to/photos" --apply    # 真的移动
 
 【绝不删除任何文件】:确认无误后由你自己手动清空 _trash_bin;想反悔就从 bin 挪回原天文件夹。
 """
@@ -21,7 +21,7 @@ import phototag_core as core  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser(description="把 status=trash 的照片移动到 _trash_bin(默认 dry-run)")
-    ap.add_argument("--root", required=True, help="照片根目录,如 /Volumes/My Book/Sony A7V")
+    ap.add_argument("--root", required=True, help="照片根目录,如 /path/to/photos")
     ap.add_argument("--bin", dest="bin_dir", default=None, help="回收目录(默认 <root>/_trash_bin)")
     ap.add_argument("--apply", action="store_true", help="真的移动(不加只打印清单)")
     args = ap.parse_args()

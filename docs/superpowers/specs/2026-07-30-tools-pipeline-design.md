@@ -12,7 +12,7 @@
 ## 2. 心智模型(两个库 + 一次外部绕道 + 三种去向)
 
 ```
-  源库 /Volumes/My Book/Sony A7V        [ LrC 外部修图 ]        成片库 ~/Pictures/成片
+  源库 /path/to/photos        [ LrC 外部修图 ]        成片库 ~/Pictures/成片
   JPG+ARW,每天一个 phototags.json                              纯 JPG,每天一个 phototags.json
         │                                                                ▲
   ①废片 └─► sweep(移到 _trash_bin/<天>,只移不删,可捞回)                    │

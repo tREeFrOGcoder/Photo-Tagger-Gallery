@@ -4,9 +4,9 @@
 
 真正逻辑在仓库根的 phototag_core;本文件只负责解析命令行与打印。
 
-    python3 export_xmp.py --root "/Volumes/My Book/Sony A7V"            # dry-run
-    python3 export_xmp.py --root "/Volumes/My Book/Sony A7V" --apply
-    python3 export_xmp.py --root "/Volumes/ZTSSD/Sony 6300" --where status=edit,sooc --apply
+    python3 export_xmp.py --root "/path/to/photos"            # dry-run
+    python3 export_xmp.py --root "/path/to/photos" --apply
+    python3 export_xmp.py --root "/path/to/raw-photos" --where status=edit,sooc --apply
 
 写入内容:色标 xmp:Label(大修=黄/直出=绿/废片=红)、绝美=5 星、层级关键词 phototag|维度|值。
 安全:只给 RAW 写 sidecar;**绝不覆盖已存在的 .xmp**(那可能是 LrC 的修图参数),只跳过并报告。
