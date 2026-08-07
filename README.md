@@ -65,13 +65,39 @@ Everything is plain Python standard library + native single-file HTML/CSS/JS. No
 
 ## Quick start
 
-> Replace `/path/to/photos` with your library's top folder — the one that **contains the day sub-folders**.
+**You need a Mac.** Python 3 and `sips` already ship with macOS, so there is nothing to install first. (On Windows or Linux, use the [light edition](#light-edition) instead.)
 
-Your library is expected to be organized one folder per day:
+### 1 · Open the Terminal app
+
+Press **⌘ (Command) + Space**, type **Terminal**, press Return. A text window opens — you'll paste the commands below into it and press Return after each block.
+
+### 2 · Download phototag
+
+```bash
+git clone https://github.com/tREeFrOGcoder/Photo-Tagger-Gallery.git
+cd Photo-Tagger-Gallery
+```
+
+- The **very first time** you run `git`, macOS may pop up *"Install the command line developer tools."* Click **Install**, wait for it to finish, then run the two lines again.
+- If you use SSH keys, you can clone with `git clone git@github.com:tREeFrOGcoder/Photo-Tagger-Gallery.git` instead.
+
+### 3 · Start it
+
+```bash
+python3 v2_server/serve.py --open
+```
+
+Your browser opens to phototag automatically. (If it doesn't, open **http://127.0.0.1:8787** yourself.) You land on the **tagger**; the **gallery** and **tools** pages are one click away via the small switcher in the top corner.
+
+### 4 · Point it at your photos
+
+On the page, click **📁 Change folder (换目录)**, browse to the folder that holds your **day sub-folders**, and confirm. That's it — you're tagging. Press **`H`** anytime to see every keyboard shortcut.
+
+Your library should be **one folder per day** (phototag creates the `phototags.json` files itself — you don't):
 
 ```
-/path/to/photos/
-├── 2026.01.01/           ← a "day" folder (name is used as the date)
+your-photo-folder/
+├── 2026.01.01/           ← a "day" folder (the folder name is used as the date)
 │   ├── DSC00001.JPG
 │   ├── DSC00001.ARW      ← optional RAW companion
 │   └── phototags.json    ← created & maintained by phototag
@@ -79,24 +105,24 @@ Your library is expected to be organized one folder per day:
 │   └── ...
 ```
 
-Start the server:
+### Stopping & running it again
+
+- **Stop:** click the Terminal window and press **`Ctrl + C`**.
+- **Next time:** open Terminal and run `cd Photo-Tagger-Gallery`, then `python3 v2_server/serve.py --open` again.
+
+### Handy options (all optional)
+
+| Option | What it does |
+|---|---|
+| `--root "/path/to/photos"` | Open a specific library on launch (skips step 4). Must be under `/Volumes` or your home folder. |
+| `--port 9000` | Use a different port (default `8787`). |
+| `--open` | Open the browser for you (used above). |
+
+To keep it running without leaving Terminal open:
 
 ```bash
-cd v2_server
-python3 serve.py --root "/path/to/photos" --open
-```
-
-- `--root PATH` — default library to open. Must live under `/Volumes` or your home folder. If omitted, phototag auto-detects likely photo drives and you pick a folder in the UI.
-- `--port N` — default `8787`.
-- `--open` — open your browser automatically.
-
-Then open **http://127.0.0.1:8787** — you land on the **tagger** (`/tagger`). The gallery is at `/gallery`, tools at `/tools`, and a small **click-only switcher** in the top corner jumps between the three (it carries your current root along).
-
-Run it in the background if you like:
-
-```bash
-nohup python3 serve.py --root "/path/to/photos" >/dev/null 2>&1 &
-# ...or just open a tmux/screen window and run it there.
+nohup python3 v2_server/serve.py >/dev/null 2>&1 &
+# ...or run it inside a tmux/screen window.
 ```
 
 ---

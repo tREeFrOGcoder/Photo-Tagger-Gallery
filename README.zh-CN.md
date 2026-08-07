@@ -65,13 +65,39 @@ tag 存在每个天文件夹里的一个小小的 `phototags.json`(纯 JSON、�
 
 ## 快速开始
 
-> 把 `/path/to/photos` 换成你照片库的**顶层文件夹** —— 也就是**包含各个天文件夹**的那一层。
+**需要一台 Mac。** Python 3 和 `sips` 都是 macOS 自带的,所以不用先装任何东西。(Windows 或 Linux 请改用 [light 版](#light-版)。)
 
-照片库应当按每天一个文件夹组织:
+### 1 · 打开「终端」App
+
+按 **⌘(Command) + 空格**,输入 **终端**(或 Terminal),回车。会打开一个文字窗口 —— 下面的命令就复制粘贴进这个窗口,每一段贴完按回车。
+
+### 2 · 下载 phototag
+
+```bash
+git clone https://github.com/tREeFrOGcoder/Photo-Tagger-Gallery.git
+cd Photo-Tagger-Gallery
+```
+
+- **第一次**运行 `git` 时,macOS 可能弹出*「安装命令行开发者工具」* —— 点**安装**,装完再把这两行跑一遍。
+- 如果你配了 SSH key,也可以用 `git clone git@github.com:tREeFrOGcoder/Photo-Tagger-Gallery.git`。
+
+### 3 · 启动
+
+```bash
+python3 v2_server/serve.py --open
+```
+
+浏览器会自动打开 phototag。(没自动开就手动访问 **http://127.0.0.1:8787**。)你会落地在**打标器**;右上角有个小切换器,一点就到**画廊**和**工具**页。
+
+### 4 · 指向你的照片
+
+在页面里点 **📁 换目录**,浏览到装着**各个天文件夹**的那一层,确认。搞定 —— 可以开始打 tag 了。随时按 **`H`** 查看全部键位。
+
+照片库应当是**每天一个文件夹**(`phototags.json` 由 phototag 自己创建,不用你管):
 
 ```
-/path/to/photos/
-├── 2026.01.01/           ← 一个"天"文件夹(名字被当作日期)
+你的照片文件夹/
+├── 2026.01.01/           ← 一个"天"文件夹(文件夹名字被当作日期)
 │   ├── DSC00001.JPG
 │   ├── DSC00001.ARW      ← 可选的 RAW 伴生文件
 │   └── phototags.json    ← 由 phototag 创建和维护
@@ -79,24 +105,24 @@ tag 存在每个天文件夹里的一个小小的 `phototags.json`(纯 JSON、�
 │   └── ...
 ```
 
-启动服务器:
+### 停止与再次启动
+
+- **停止:** 点一下终端窗口,按 **`Ctrl + C`**。
+- **下次再用:** 打开终端,`cd Photo-Tagger-Gallery`,再跑一遍 `python3 v2_server/serve.py --open`。
+
+### 顺手的参数(都可选)
+
+| 参数 | 作用 |
+|---|---|
+| `--root "/path/to/photos"` | 启动就打开指定的库(跳过第 4 步)。必须在 `/Volumes` 或家目录之下。 |
+| `--port 9000` | 换端口(默认 `8787`)。 |
+| `--open` | 帮你自动打开浏览器(上面用到了)。 |
+
+不想一直开着终端,就挂后台:
 
 ```bash
-cd v2_server
-python3 serve.py --root "/path/to/photos" --open
-```
-
-- `--root 路径` —— 默认打开的库。必须在 `/Volumes` 或你的家目录之下。不填时,phototag 会自动探测常见照片盘,你在界面里选文件夹。
-- `--port N` —— 默认 `8787`。
-- `--open` —— 启动后自动打开浏览器。
-
-然后打开 **http://127.0.0.1:8787** —— 落地在**打标器**(`/tagger`)。画廊在 `/gallery`,工具在 `/tools`;右上角有个**纯点击的小切换器**在三页之间互跳(会带上你当前的根目录)。
-
-想挂后台就:
-
-```bash
-nohup python3 serve.py --root "/path/to/photos" >/dev/null 2>&1 &
-# ……或者干脆开个 tmux/screen 窗口跑着。
+nohup python3 v2_server/serve.py >/dev/null 2>&1 &
+# ……或者在 tmux/screen 窗口里跑着。
 ```
 
 ---
