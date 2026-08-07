@@ -102,11 +102,12 @@
   #ss-ctrl .seg{display:flex;gap:1px;background:var(--bg3);border-radius:7px;padding:2px}
   #ss-ctrl .seg button{border-radius:5px;font-size:12px;padding:2px 9px;color:var(--fg2)}
   #ss-ctrl .seg button.on{background:var(--acc);color:#fff}
-  #ss-speed .custom{display:inline-flex;align-items:center;gap:1px;border-radius:5px;padding:0 7px 0 3px;color:var(--fg2);cursor:text}
-  #ss-speed .custom.on{background:var(--acc);color:#fff}
-  #ss-custom{width:56px;background:transparent;border:none;color:inherit;font:inherit;font-size:12px;padding:3px 2px;text-align:right;outline:none;-moz-appearance:textfield}
-  #ss-custom::-webkit-outer-spin-button,#ss-custom::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-  #ss-custom::placeholder{color:var(--fg2)}
+  #ss-ctrl .seg .custom{display:inline-flex;align-items:center;gap:1px;border-radius:5px;padding:0 7px 0 3px;color:var(--fg2);cursor:text}
+  #ss-ctrl .seg .custom.on{background:var(--acc);color:#fff}
+  #ss-ctrl .seg .custom input{width:56px;background:transparent;border:none;color:inherit;font:inherit;font-size:12px;padding:3px 2px;text-align:right;outline:none;-moz-appearance:textfield}
+  #ss-ctrl .seg .custom input::-webkit-outer-spin-button,#ss-ctrl .seg .custom input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  #ss-ctrl .seg .custom input::placeholder{color:var(--fg2)}
+  #ss-ctrl .tag{color:var(--fg2);font-size:11px;margin-left:2px}
   #ss-ctrl .lbl{color:var(--fg2);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
 </style>
 </head>
@@ -194,6 +195,13 @@
       <button data-d="8000" class="on">8s</button>
       <button data-d="30000">30s</button>
       <span class="custom" id="ss-custom-wrap"><input id="ss-custom" type="number" min="0.5" step="0.5" placeholder="自定义">s</span>
+    </span>
+    <span class="tag">淡变</span>
+    <span class="seg" id="ss-fade" title="淡入淡出时长(硬切=无淡变)">
+      <button data-ms="0">硬切</button>
+      <button data-ms="300" class="on">0.3s</button>
+      <button data-ms="600">0.6s</button>
+      <span class="custom" id="ss-fadecustom-wrap"><input id="ss-fadecustom" type="number" min="0" step="0.1" placeholder="自定义">s</span>
     </span>
     <button id="ss-lock" title="锁定并回全屏">🔒</button>
     <button id="ss-exit" title="退出">✕</button>
@@ -819,7 +827,7 @@ async function startSlideshow() {
   $("ss-load").classList.add("hidden");
   preloadAhead(ss.sPos);                         // 预解码往后 ~5 张原图
   await ssFade(1).finished;                      // 像素已就位再淡入
-  scheduleNext();
+  scheduleNext(); syncFadeUI();
   ss.locked = true; hideToolbar(); flashHint();
 }
 function rebuildSlides() { ss.slides = packAll(applyShuffle(ss.set, ss.shuffle)); ss.sPos = 0; }
@@ -876,6 +884,20 @@ $("ss-custom").addEventListener("change", () => {   // 内联自定义秒数,输
   const v = parseFloat($("ss-custom").value);
   if (isNaN(v) || v <= 0) { $("ss-custom").value = ""; return; }
   ss.dwell = Math.round(v * 1000); ssSpeedActive($("ss-custom-wrap")); scheduleNext();
+});
+// 淡入淡出时长(独立于停留时长):改了立即对下次切换生效,不影响当前停留计时
+function ssFadeActive(el) { for (const x of $("ss-fade").children) x.classList.toggle("on", x === el); }
+function syncFadeUI() {   // 把 ss.fade(含深链 &fade)反映到高亮:命中预设点亮预设,否则点亮自定义并回填
+  const btn = [...document.querySelectorAll("#ss-fade button")].find(b => +b.dataset.ms === ss.fade);
+  if (btn) ssFadeActive(btn);
+  else { $("ss-fadecustom").value = ss.fade / 1000; ssFadeActive($("ss-fadecustom-wrap")); }
+}
+for (const b of document.querySelectorAll("#ss-fade button")) b.onclick = () => { ss.fade = +b.dataset.ms; ssFadeActive(b); };
+$("ss-fadecustom-wrap").onclick = () => $("ss-fadecustom").focus();
+$("ss-fadecustom").addEventListener("change", () => {   // 内联自定义淡变秒数(0=硬切,无淡入淡出)
+  const v = parseFloat($("ss-fadecustom").value);
+  if (isNaN(v) || v < 0) { $("ss-fadecustom").value = ""; return; }
+  ss.fade = Math.round(v * 1000); ssFadeActive($("ss-fadecustom-wrap"));
 });
 for (const b of document.querySelectorAll("#ss-fit button")) b.onclick = () => {
   ss.fill = b.dataset.f === "1";
